@@ -9,6 +9,8 @@ const COLORS = ['red', 'yellow', 'green', 'blue'];
 const ASCENDING = new Set(['red', 'yellow']);
 const seats = new Map();
 let botTimer;
+let gameNumber = 1;
+const wins = [0, 0, 0];
 
 const rowValues = color => ASCENDING.has(color)
   ? [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
@@ -17,7 +19,7 @@ const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])),
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
   settings: { communityDice: 3 }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], colorUsed: false,
+  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false,
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -36,9 +38,9 @@ function score(sheet) {
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
-    settings: game.settings, locked: game.locked, sheets: game.sheets, prompt: game.prompt, you,
+    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedDone: game.sharedDone, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
-    seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]) }))
+    seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
 }
 function send(res, data, status = 200) {
@@ -97,6 +99,7 @@ function botShared(seat) {
     .filter(item => item.move).sort((a, b) => b.move.index - a.move.index)[0];
   if (choice) addMark(seat, choice.move.color, choice.move.value);
   game.sharedUsed[seat] = true;
+  game.sharedDone[seat] = true;
 }
 function botColor(seat) {
   let best;
@@ -111,21 +114,30 @@ function checkForEnd() {
   const penalties = game.sheets.some(sheet => sheet.penalties >= 4);
   if (locks >= 2 || penalties) {
     game.phase = 'gameover';
+    const scores = game.sheets.map(score);
+    wins[scores.indexOf(Math.max(...scores))]++;
     game.prompt = 'Game complete — the highest score wins.';
     clearTimeout(botTimer);
     return true;
   }
   return false;
 }
+function advanceSharedIfReady() {
+  if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
+  game.stage = 'color';
+  game.prompt = `${NAMES[game.turn]} may use one white die with one colored die, or take a penalty.`;
+  scheduleBot();
+}
 function roll() {
   game.round++;
   game.dice = { white: Array.from({ length: game.settings.communityDice }, rollDie), red: rollDie(), yellow: rollDie(), green: rollDie(), blue: rollDie() };
   game.stage = 'shared';
   game.sharedUsed = [false, false, false];
+  game.sharedDone = [false, false, false];
   game.colorUsed = false;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
   NAMES.forEach((_, seat) => { if (!isLive(seat)) botShared(seat); });
-  scheduleBot();
+  advanceSharedIfReady();
 }
 function nextTurn() {
   if (checkForEnd()) return;
@@ -148,6 +160,7 @@ function scheduleBot() {
 }
 function start() {
   const oldSettings = game.settings;
+  if (game.phase === 'gameover') gameNumber++;
   game = newGame();
   game.settings = oldSettings;
   game.phase = 'playing';
@@ -206,16 +219,26 @@ const server = http.createServer((req, res) => {
     if (action === 'shared') {
       if (game.stage !== 'shared') return fail(res, 'The shared step has ended.');
       if (game.sharedUsed[seat]) return fail(res, 'You already used your shared action this round.');
+      if (game.sharedDone[seat]) return fail(res, 'You already finished this turn.');
       const option = communityOptions().find(item => item.key === body.option);
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'continue') {
-      if (seat !== game.turn || game.stage !== 'shared') return fail(res, 'Only the active player can continue.');
-      game.stage = 'color';
-      game.prompt = `${NAMES[seat]} may combine one white die with one colored die.`;
-      scheduleBot();
+      if (game.stage !== 'shared') return fail(res, 'The shared step has ended.');
+      game.sharedDone[seat] = true;
+      advanceSharedIfReady();
+      return send(res, { state: snapshot(seat) });
+    }
+    if (action === 'done') {
+      if (game.stage === 'shared') {
+        game.sharedDone[seat] = true;
+        advanceSharedIfReady();
+        return send(res, { state: snapshot(seat) });
+      }
+      if (seat !== game.turn || game.stage !== 'color') return fail(res, 'Only the active player can finish the roll.');
+      nextTurn();
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'color') {
@@ -232,7 +255,7 @@ const server = http.createServer((req, res) => {
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'penalty') {
-      if (seat !== game.turn) return fail(res, 'Only the active player can take a penalty.');
+      if (seat !== game.turn || game.stage !== 'color') return fail(res, 'Only the active player can take a penalty.');
       game.sheets[seat].penalties++;
       game.prompt = `${NAMES[seat]} took a −5 penalty.`;
       nextTurn();
