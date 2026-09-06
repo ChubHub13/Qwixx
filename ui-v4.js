@@ -12,7 +12,7 @@
   </style><header class="top"><div class="mark">⚄</div><div class="title">QWIXX<small>Three players · shared-dice table</small></div><i class="spacer"></i><button class="settings" id="settingsButton">Settings</button></header><div class="shell"><aside class="side"><section class="panel round"><div class="eyebrow">ROUND</div><b id="round">Waiting</b><span id="roundHint">Choose a player to begin</span></section><section class="panel"><h2 class="score-title">SCORE · HIGH WINS</h2><div id="people"></div></section><div class="side-actions"><button id="player">Player</button><button id="start">Start<br>Game</button></div></aside><main class="table"><div class="seats" id="seats"></div><div class="boards" id="boards"></div><section class="roll" id="roll"></section></main></div><section class="pop hide" id="settings"><h2>Table settings</h2><label class="option"><input name="count" type="radio" value="2"> 2 white dice</label><label class="option"><input name="count" type="radio" value="3" checked> 3 white dice</label></section><section class="modal" id="modal"><div class="modal-card"><h1>Choose Your Player</h1><div class="players" id="players"></div></div></section><button class="return" id="return">← Game Night</button><div class="toast" id="toast"></div>`;
   document.head.insertAdjacentHTML('beforeend', `<style>
     .roll{width:430px!important;min-height:270px!important;padding:22px!important}.roll .dice.new-roll .die{animation:roll-in .58s cubic-bezier(.2,.8,.2,1) both}.roll .die:nth-child(2){animation-delay:.07s}.roll .die:nth-child(3){animation-delay:.14s}.roll .die:nth-child(4){animation-delay:.21s}.roll .die:nth-child(5){animation-delay:.28s}.roll .die:nth-child(6){animation-delay:.35s}.roll .die:nth-child(7){animation-delay:.42s}@keyframes roll-in{0%{opacity:0;transform:translateY(-48px) rotate(-80deg)}65%{transform:translateY(7px) rotate(13deg)}100%{opacity:1}}
-    .row{grid-template-columns:repeat(11,minmax(9px,1fr)) 25px 36px!important;gap:2px!important}.row>i{display:none}.row-score,.row-lock{display:grid;place-items:center;border-radius:7px;background:#151619;color:#fff;font-size:14px;font-weight:900}.row-lock{background:#f7f4e7;border:1px solid #999}.row-lock img{width:15px;height:15px;object-fit:contain;filter:invert(1)}.cell{font-size:18px!important;font-weight:900!important;opacity:1!important;border-radius:7px!important;color:#fff!important;text-shadow:0 1px 2px #000}.row.red .cell.mark{background:var(--red)!important}.row.yellow .cell.mark{background:var(--yellow)!important}.row.green .cell.mark{background:var(--green)!important}.row.blue .cell.mark{background:var(--blue)!important}.cell.mark{color:#fff!important;text-shadow:0 1px 2px #000;font-size:18px!important}
+    .row{grid-template-columns:repeat(11,minmax(9px,1fr)) 25px 36px!important;gap:2px!important}.row>i{display:none}.row-score,.row-lock{display:grid;place-items:center;border-radius:7px;background:#151619;color:#fff;font-size:14px;font-weight:900}.row-lock{background:#f7f4e7;border:1px solid #999}.row-lock img{width:15px;height:15px;object-fit:contain}.cell{font-size:18px!important;font-weight:900!important;opacity:1!important;border-radius:7px!important;color:#fff!important;text-shadow:none!important}.cell.mark{height:28px!important;background:#aeaeae!important;text-shadow:none!important;font-size:18px!important}.row.red .cell.mark{color:var(--red)!important}.row.yellow .cell.mark{color:var(--yellow)!important}.row.green .cell.mark{color:var(--green)!important}.row.blue .cell.mark{color:var(--blue)!important}
     .cell,.cell.mark{text-shadow:none!important}.cell.mark{height:28px!important;min-width:0!important}.seat-done{margin-left:3px;border:1px solid #a17b43;border-radius:6px;background:#391943;color:#fff1b9;padding:4px 7px;font-size:10px;font-weight:900}.done{display:block;margin:18px auto 0;border:1px solid #9c7b42;border-radius:8px;background:#311a37;color:#fff4c7;padding:9px 28px;font-weight:900}
   </style>`);
   const $ = s => document.querySelector(s);
@@ -57,11 +57,16 @@
       });
     });
     document.querySelectorAll('.board-head').forEach(header => header.remove());
+    document.querySelectorAll('.board-foot span').forEach((element, index) => {
+      const seat = boardOrder()[index];
+      const whites = state.sheets[seat.seat].penalties;
+      element.textContent = `Whites: ${whites}/4 (−${whites * 5} points)`;
+    });
     document.querySelectorAll('.cell.live').forEach(button=>button.onclick=()=>choose(button.dataset.color,Number(button.dataset.value)));
     document.querySelectorAll('.board.you .cell.mark').forEach(button => { button.disabled = false; button.onclick = () => act({action:'undo'}); });
     document.querySelectorAll('[data-pass]').forEach(button => {
       if (state.stage !== 'shared') button.remove();
-      else button.textContent = 'White (−5)';
+      else button.textContent = 'TAKE WHITE';
     });
     $('#seatDone')?.addEventListener('click',()=>act({action:'done'}));
     $('#nextRoll')?.addEventListener('click',()=>act({action:'nextRoll'}));
