@@ -233,6 +233,16 @@ const server = http.createServer((req, res) => {
   const file = path.resolve(__dirname, `.${requested}`);
   if (!file.startsWith(__dirname) || !fs.existsSync(file)) { res.writeHead(404); return res.end('Not found'); }
   const contentType = path.extname(file) === '.html' ? 'text/html; charset=utf-8' : 'application/octet-stream';
+  if (requested === '/qwixx.html') {
+    // Keep the Qwixx page's visual language aligned with the other Game Night tables.
+    const page = fs.readFileSync(file, 'utf8')
+      .replace('FIVE CROWNS', 'QWIXX')
+      .replace('Three players · eleven rounds · lowest score wins', 'Three players · shared-dice table')
+      .replace('<div class="qwixx">Qwixx</div>', '')
+      .replace('>♛<', '>⚄<');
+    res.writeHead(200, { 'Content-Type': contentType });
+    return res.end(page);
+  }
   res.writeHead(200, { 'Content-Type': contentType });
   fs.createReadStream(file).pipe(res);
 });
