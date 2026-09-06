@@ -19,7 +19,7 @@ const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])),
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
   settings: { communityDice: 3 }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false,
+  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, lastActions: [null, null, null],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -38,7 +38,7 @@ function score(sheet) {
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
-    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedDone: game.sharedDone, gameNumber, prompt: game.prompt, you,
+    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedDone: game.sharedDone, colorUsed: game.colorUsed, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
@@ -69,6 +69,20 @@ function addMark(seat, color, value) {
     game.locked[color] = true;
     game.prompt = `${NAMES[seat]} locked the ${color} row.`;
   }
+  return true;
+}
+function undoLastMark(seat) {
+  const last = game.lastActions[seat];
+  if (!last) return false;
+  const marks = game.sheets[seat].marks[last.color];
+  const position = marks.lastIndexOf(last.index);
+  if (position < 0) return false;
+  marks.splice(position, 1);
+  if (last.index === 10 && !game.sheets.some(sheet => sheet.marks[last.color].includes(10))) game.locked[last.color] = false;
+  if (last.kind === 'shared') game.sharedUsed[seat] = false;
+  if (last.kind === 'color') game.colorUsed = false;
+  game.lastActions[seat] = null;
+  game.prompt = `${NAMES[seat]} took back the last mark.`;
   return true;
 }
 function communityOptions() {
@@ -124,6 +138,7 @@ function checkForEnd() {
 }
 function advanceSharedIfReady() {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
+  if (game.colorUsed) return nextTurn();
   game.stage = 'color';
   game.prompt = `${NAMES[game.turn]} may use one white die with one colored die, or take a penalty.`;
   scheduleBot();
@@ -223,6 +238,7 @@ const server = http.createServer((req, res) => {
       const option = communityOptions().find(item => item.key === body.option);
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
+      game.lastActions[seat] = { kind: 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) };
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'continue') {
@@ -242,11 +258,18 @@ const server = http.createServer((req, res) => {
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'color') {
-      if (seat !== game.turn || game.stage !== 'color') return fail(res, 'It is not your colored-die step.');
+      if (seat !== game.turn || !['shared', 'color'].includes(game.stage)) return fail(res, 'It is not your colored-die step.');
       if (game.colorUsed) return fail(res, 'You already used the colored action this round.');
       const white = Number(body.white), color = String(body.color || '');
       if (!game.dice.white.includes(white) || !addMark(seat, color, white + game.dice[color])) return fail(res, 'That box is not available.');
       game.colorUsed = true;
+      game.lastActions[seat] = { kind: 'color', color, index: rowValues(color).indexOf(white + game.dice[color]) };
+      return send(res, { state: snapshot(seat) });
+    }
+    if (action === 'undo') {
+      if (game.stage === 'shared' && game.sharedDone[seat]) return fail(res, 'You already finished this turn.');
+      if (game.stage === 'color' && seat !== game.turn) return fail(res, 'It is not your roll.');
+      if (!undoLastMark(seat)) return fail(res, 'There is no mark to undo.');
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'end') {
