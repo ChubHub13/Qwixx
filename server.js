@@ -108,7 +108,7 @@ function bestMark(seat, total, onlyColor, maxSkipped = Infinity) {
     }
   }
   const locking = candidates.filter(move => move.index === 10 && !shouldAvoidGameEndingLock(seat, move));
-  const preferred = locking.length ? locking : candidates;
+  const preferred = locking.length ? locking : candidates.filter(move => botShouldPlayMove(seat, move));
   return preferred.sort((a, b) => a.skipped - b.skipped || b.index - a.index)[0];
 }
 function shouldAvoidGameEndingLock(seat, move) {
@@ -117,9 +117,19 @@ function shouldAvoidGameEndingLock(seat, move) {
   const leader = Math.max(...game.sheets.map(score).filter((_, index) => index !== seat));
   return projected < leader - 10;
 }
+function botShouldPlayMove(seat, move) {
+  if (move.index === 10) return !shouldAvoidGameEndingLock(seat, move);
+  if (move.skipped === 0) return true;
+  const closedColors = COLORS.filter(color => game.locked[color]).length;
+  const marksInRow = game.sheets[seat].marks[move.color].length;
+  const nearLock = marksInRow >= requiredToClose() - 1;
+  if (move.skipped === 1) return game.round >= 7 || closedColors >= 1 || nearLock;
+  if (move.skipped === 2) return closedColors >= 1 && nearLock;
+  return false;
+}
 function botShared(seat) {
   const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total, null, 2) }))
-    .filter(item => item.move).sort((a, b) => b.move.index - a.move.index)[0];
+    .filter(item => item.move).sort((a, b) => a.move.skipped - b.move.skipped || b.move.index - a.move.index)[0];
   if (choice) addMark(seat, choice.move.color, choice.move.value);
   game.sharedUsed[seat] = true;
   game.sharedDone[seat] = true;
@@ -128,7 +138,7 @@ function botColor(seat) {
   let best;
   for (const color of COLORS) for (const white of game.dice.white) {
     const move = bestMark(seat, white + game.dice[color], color, 2);
-    if (move && (!best || move.index > best.index)) best = move;
+    if (move && (!best || move.skipped < best.skipped || (move.skipped === best.skipped && move.index > best.index))) best = move;
   }
   if (best) addMark(seat, best.color, best.value);
 }

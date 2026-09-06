@@ -70,7 +70,7 @@
     document.querySelectorAll('.cell.live').forEach(button=>button.onclick=()=>choose(button.dataset.color,Number(button.dataset.value)));
     document.querySelectorAll('.board.you .cell.mark').forEach(button => { button.disabled = false; button.onclick = () => act({action:'undo'}); });
     document.querySelectorAll('[data-pass]').forEach(button => {
-      if (state.stage !== 'shared') button.remove();
+      if (state.stage !== 'shared' || state.sharedUsed?.[state.you] || state.colorUsed) button.remove();
       else button.textContent = 'TAKE WHITE';
     });
     $('#seatDone')?.addEventListener('click',()=>act({action:'done'}));
