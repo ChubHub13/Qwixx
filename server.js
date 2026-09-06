@@ -15,11 +15,11 @@ const wins = [0, 0, 0];
 const rowValues = color => ASCENDING.has(color)
   ? [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   : [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
-const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), penalties: 0 });
+const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), locks: Object.fromEntries(COLORS.map(c => [c, false])), penalties: 0 });
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
   settings: { communityDice: 3, allThree: false }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, lastActions: [null, null, null],
+  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, lastActions: [null, null, null],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -30,7 +30,7 @@ function seatForToken(token) { for (const [seat, data] of seats) if (data.token 
 function isLive(seat) { return seats.has(seat); }
 function score(sheet) {
   const points = COLORS.reduce((sum, color) => {
-    const n = sheet.marks[color].length;
+    const n = sheet.marks[color].length + (sheet.locks[color] ? 1 : 0);
     return sum + n * (n + 1) / 2;
   }, 0);
   return points - sheet.penalties * 5;
@@ -38,7 +38,7 @@ function score(sheet) {
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
-    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, gameNumber, prompt: game.prompt, you,
+    settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
@@ -65,7 +65,9 @@ function addMark(seat, color, value) {
   if (!validMark(seat, color, value)) return false;
   const index = rowValues(color).indexOf(value);
   game.sheets[seat].marks[color].push(index);
+  game.highlights[seat].push({ color, index });
   if (index === 10) {
+    game.sheets[seat].locks[color] = true;
     game.locked[color] = true;
     game.prompt = `${NAMES[seat]} locked the ${color} row.`;
   }
@@ -78,7 +80,11 @@ function undoLastMark(seat) {
   const position = marks.lastIndexOf(last.index);
   if (position < 0) return false;
   marks.splice(position, 1);
-  if (last.index === 10 && !game.sheets.some(sheet => sheet.marks[last.color].includes(10))) game.locked[last.color] = false;
+  game.highlights[seat] = game.highlights[seat].filter(mark => !(mark.color === last.color && mark.index === last.index));
+  if (last.index === 10) {
+    game.sheets[seat].locks[last.color] = false;
+    if (!game.sheets.some(sheet => sheet.marks[last.color].includes(10))) game.locked[last.color] = false;
+  }
   if (last.kind === 'shared') game.sharedUsed[seat] = false;
   if (last.kind === 'color' || last.kind === 'all-three') game.colorUsed = false;
   game.lastActions[seat] = null;
@@ -178,6 +184,7 @@ function checkForEnd() {
 }
 function advanceSharedIfReady() {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
+  game.highlights = [[], [], []];
   if (checkForEnd()) return;
   game.turn = (game.turn + 1) % NAMES.length;
   game.stage = 'awaitingRoll';
@@ -195,6 +202,7 @@ function roll() {
   game.stage = 'shared';
   game.sharedUsed = [false, false, false];
   game.sharedDone = [false, false, false];
+  game.highlights = [[], [], []];
   game.colorUsed = false;
   game.rerolled = false;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
