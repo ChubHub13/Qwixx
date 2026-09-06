@@ -77,18 +77,23 @@ function communityOptions() {
   }
   return options;
 }
-function bestMark(seat, total, onlyColor) {
+function bestMark(seat, total, onlyColor, maxSkipped = Infinity) {
   const candidates = [];
   for (const color of onlyColor ? [onlyColor] : COLORS) {
     if (!game.locked[color]) {
       const index = rowValues(color).indexOf(total);
-      if (validMark(seat, color, total)) candidates.push({ color, value: total, index });
+      const marks = game.sheets[seat].marks[color];
+      const lastIndex = marks.length ? Math.max(...marks) : -1;
+      const skipped = index - lastIndex - 1;
+      if (validMark(seat, color, total) && skipped <= maxSkipped) {
+        candidates.push({ color, value: total, index, skipped });
+      }
     }
   }
   return candidates.sort((a, b) => b.index - a.index)[0];
 }
 function botShared(seat) {
-  const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total) }))
+  const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total, null, 2) }))
     .filter(item => item.move).sort((a, b) => b.move.index - a.move.index)[0];
   if (choice) addMark(seat, choice.move.color, choice.move.value);
   game.sharedUsed[seat] = true;
@@ -96,7 +101,7 @@ function botShared(seat) {
 function botColor(seat) {
   let best;
   for (const color of COLORS) for (const white of game.dice.white) {
-    const move = bestMark(seat, white + game.dice[color], color);
+    const move = bestMark(seat, white + game.dice[color], color, 2);
     if (move && (!best || move.index > best.index)) best = move;
   }
   if (best) addMark(seat, best.color, best.value);
@@ -118,7 +123,7 @@ function roll() {
   game.stage = 'shared';
   game.sharedUsed = [false, false, false];
   game.colorUsed = false;
-  game.prompt = `${NAMES[game.turn]} rolled. Everyone may mark one community total.`;
+  game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
   NAMES.forEach((_, seat) => { if (!isLive(seat)) botShared(seat); });
   scheduleBot();
 }
@@ -239,6 +244,9 @@ const server = http.createServer((req, res) => {
       .replace('FIVE CROWNS', 'QWIXX')
       .replace('Three players · eleven rounds · lowest score wins', 'Three players · shared-dice table')
       .replace('<div class="qwixx">Qwixx</div>', '')
+      .replace('Everyone may choose one community total.', 'Community dice are ready.')
+      .replace('Five marks are required to close a color.', '')
+      .replace('Default. Choose one of the three pair totals; seven marks are required to close a color.', '')
       .replace('>♛<', '>⚄<');
     res.writeHead(200, { 'Content-Type': contentType });
     return res.end(page);
