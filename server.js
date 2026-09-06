@@ -130,9 +130,13 @@ function botShouldPlayMove(seat, move) {
 function botShared(seat) {
   const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total, null, 2) }))
     .filter(item => item.move).sort((a, b) => a.move.skipped - b.move.skipped || b.move.index - a.move.index)[0];
-  if (choice) addMark(seat, choice.move.color, choice.move.value);
+  if (choice) {
+    addMark(seat, choice.move.color, choice.move.value);
+    if (choice.option.key === 'all-three' && seat === game.turn) game.colorUsed = true;
+  }
   game.sharedUsed[seat] = true;
   game.sharedDone[seat] = true;
+  return Boolean(choice);
 }
 function botColor(seat) {
   let best;
@@ -141,6 +145,23 @@ function botColor(seat) {
     if (move && (!best || move.skipped < best.skipped || (move.skipped === best.skipped && move.index > best.index))) best = move;
   }
   if (best) addMark(seat, best.color, best.value);
+  return Boolean(best);
+}
+function forcedBotMove(seat) {
+  const candidates = [];
+  for (const option of communityOptions()) {
+    for (const color of COLORS) {
+      const index = rowValues(color).indexOf(option.total);
+      if (validMark(seat, color, option.total)) candidates.push({ color, value: option.total, index, skipped: index - (game.sheets[seat].marks[color].length ? Math.max(...game.sheets[seat].marks[color]) : -1) - 1 });
+    }
+  }
+  for (const color of COLORS) for (const white of game.dice.white) {
+    const value = white + game.dice[color], index = rowValues(color).indexOf(value);
+    if (validMark(seat, color, value)) candidates.push({ color, value, index, skipped: index - (game.sheets[seat].marks[color].length ? Math.max(...game.sheets[seat].marks[color]) : -1) - 1 });
+  }
+  const move = candidates.sort((a, b) => a.skipped - b.skipped || b.index - a.index)[0];
+  if (move) addMark(seat, move.color, move.value);
+  return Boolean(move);
 }
 function checkForEnd() {
   const locks = COLORS.filter(color => game.locked[color]).length;
@@ -177,8 +198,15 @@ function roll() {
   game.colorUsed = false;
   game.rerolled = false;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
-  NAMES.forEach((_, seat) => { if (!isLive(seat)) botShared(seat); });
-  if (!isLive(game.turn) && !game.colorUsed) botColor(game.turn);
+  let activeBotMoved = false;
+  NAMES.forEach((_, seat) => {
+    if (!isLive(seat)) {
+      const moved = botShared(seat);
+      if (seat === game.turn) activeBotMoved = moved;
+    }
+  });
+  if (!isLive(game.turn) && !game.colorUsed) activeBotMoved = botColor(game.turn) || activeBotMoved;
+  if (!isLive(game.turn) && !activeBotMoved && !forcedBotMove(game.turn)) game.sheets[game.turn].penalties++;
   advanceSharedIfReady();
 }
 function nextTurn() {
@@ -278,6 +306,9 @@ const server = http.createServer((req, res) => {
     }
     if (action === 'done') {
       if (game.stage === 'shared') {
+        if (seat === game.turn && !game.sharedUsed[seat] && !game.colorUsed) {
+          return fail(res, 'The roller must mark a number or take white before finishing.');
+        }
         game.sharedDone[seat] = true;
         advanceSharedIfReady();
         return send(res, { state: snapshot(seat) });
