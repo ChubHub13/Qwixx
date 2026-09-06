@@ -231,16 +231,23 @@ const server = http.createServer((req, res) => {
       nextTurn();
       return send(res, { state: snapshot(seat) });
     }
+    if (action === 'penalty') {
+      if (seat !== game.turn) return fail(res, 'Only the active player can take a penalty.');
+      game.sheets[seat].penalties++;
+      game.prompt = `${NAMES[seat]} took a −5 penalty.`;
+      nextTurn();
+      return send(res, { state: snapshot(seat) });
+    }
     return fail(res, 'Unknown action.');
   });
 
   const requested = url.pathname === '/' ? '/qwixx.html' : url.pathname;
   const file = path.resolve(__dirname, `.${requested}`);
   if (!file.startsWith(__dirname) || !fs.existsSync(file)) { res.writeHead(404); return res.end('Not found'); }
-  const contentType = path.extname(file) === '.html' ? 'text/html; charset=utf-8' : 'application/octet-stream';
+  const contentType = path.extname(file) === '.html' ? 'text/html; charset=utf-8' : path.extname(file) === '.js' ? 'application/javascript; charset=utf-8' : 'application/octet-stream';
   if (requested === '/qwixx.html') {
     // Keep the Qwixx page's visual language aligned with the other Game Night tables.
-    const page = fs.readFileSync(file, 'utf8')
+    const originalPage = fs.readFileSync(file, 'utf8')
       .replace('FIVE CROWNS', 'QWIXX')
       .replace('Three players · eleven rounds · lowest score wins', 'Three players · shared-dice table')
       .replace('<div class="qwixx">Qwixx</div>', '')
@@ -248,6 +255,11 @@ const server = http.createServer((req, res) => {
       .replace('Five marks are required to close a color.', '')
       .replace('Default. Choose one of the three pair totals; seven marks are required to close a color.', '')
       .replace('>♛<', '>⚄<');
+    const inlineStart = originalPage.indexOf('<script>');
+    const inlineEnd = originalPage.lastIndexOf('</script>');
+    const page = inlineStart >= 0 && inlineEnd >= inlineStart
+      ? `${originalPage.slice(0, inlineStart)}<script src="/ui-v4.js"></script>${originalPage.slice(inlineEnd + 9)}`
+      : originalPage;
     res.writeHead(200, { 'Content-Type': contentType });
     return res.end(page);
   }
