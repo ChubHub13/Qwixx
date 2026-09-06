@@ -141,6 +141,12 @@ function advanceSharedIfReady() {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
   game.stage = 'awaitingRoll';
   game.prompt = `${NAMES[game.turn]} may roll next.`;
+  if (!isLive(game.turn)) {
+    clearTimeout(botTimer);
+    botTimer = setTimeout(() => {
+      if (game.phase === 'playing' && game.stage === 'awaitingRoll' && !isLive(game.turn)) nextTurn();
+    }, 850);
+  }
 }
 function roll() {
   game.round++;

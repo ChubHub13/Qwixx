@@ -64,7 +64,7 @@
     document.querySelectorAll('.board-foot span').forEach((element, index) => {
       const seat = boardOrder()[index];
       const whites = state.sheets[seat.seat].penalties;
-      element.textContent = `Whites: ${whites}/4 (−${whites * 5} points)`;
+      element.textContent = `Whites: ${whites}/4 (${whites ? `−${whites * 5}` : '0'} points)`;
     });
     document.querySelectorAll('.cell.live').forEach(button=>button.onclick=()=>choose(button.dataset.color,Number(button.dataset.value)));
     document.querySelectorAll('.board.you .cell.mark').forEach(button => { button.disabled = false; button.onclick = () => act({action:'undo'}); });
