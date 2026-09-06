@@ -17,7 +17,7 @@
   </style>`);
   const $ = s => document.querySelector(s);
   document.querySelector('.eyebrow').textContent = 'GAMES';
-  $('#settings').insertAdjacentHTML('beforeend', '<label class="option"><input name="count" type="radio" value="all3"> 3 white dice · use all 3</label>');
+  $('#settings').insertAdjacentHTML('beforeend', '<label class="option"><input name="count" type="radio" value="all3"> 3 white dice - can use all 3</label>');
   const say = text => { $('#toast').textContent = text; $('#toast').classList.add('show'); setTimeout(() => $('#toast').classList.remove('show'), 3200); };
   async function api(path, body) {
     const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify({...body, token}) : undefined });
