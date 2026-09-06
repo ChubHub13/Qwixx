@@ -38,7 +38,7 @@ function score(sheet) {
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
-    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, gameNumber, prompt: game.prompt, you,
+    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
@@ -87,11 +87,11 @@ function undoLastMark(seat) {
 }
 function communityOptions() {
   const white = game.dice.white;
-  if (game.settings.allThree) return [{ key: 'all-three', dice: [0, 1, 2], total: white[0] + white[1] + white[2] }];
   const options = [];
   for (let i = 0; i < white.length; i++) for (let j = i + 1; j < white.length; j++) {
     options.push({ key: `${i}-${j}`, dice: [i, j], total: white[i] + white[j] });
   }
+  if (game.settings.allThree) options.push({ key: 'all-three', dice: [0, 1, 2], total: white[0] + white[1] + white[2] });
   return options;
 }
 function bestMark(seat, total, onlyColor, maxSkipped = Infinity) {
@@ -168,7 +168,7 @@ function roll() {
   game.rerolled = false;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
   NAMES.forEach((_, seat) => { if (!isLive(seat)) botShared(seat); });
-  if (!isLive(game.turn) && !game.settings.allThree) botColor(game.turn);
+  if (!isLive(game.turn) && !game.colorUsed) botColor(game.turn);
   advanceSharedIfReady();
 }
 function nextTurn() {
@@ -257,7 +257,7 @@ const server = http.createServer((req, res) => {
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
       game.lastActions[seat] = { kind: game.settings.allThree ? 'all-three' : 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) };
-      if (game.settings.allThree && seat === game.turn) game.colorUsed = true;
+      if (option.key === 'all-three' && seat === game.turn) game.colorUsed = true;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'continue') {

@@ -84,15 +84,16 @@
     try {
       if (state.stage==='shared') {
         const options=[];
+        state.dice.white.forEach((a,i)=>state.dice.white.forEach((b,j)=>j>i&&options.push({key:`${i}-${j}`,sum:a+b})));
         if (state.settings.allThree) options.push({key:'all-three',sum:state.dice.white.reduce((sum, die)=>sum+die,0)});
-        else state.dice.white.forEach((a,i)=>state.dice.white.forEach((b,j)=>j>i&&options.push({key:`${i}-${j}`,sum:a+b})));
-        const colorWhite = !state.settings.allThree && state.turn===state.you && !state.colorUsed && state.dice.white.find(white => white + state.dice[color] === value);
+        const pick=options.find(x=>x.sum===value);
+        const colorWhite = state.turn===state.you && (state.sharedUsed[state.you] || !pick) && !state.colorUsed && state.dice.white.find(white => white + state.dice[color] === value);
         if (colorWhite) {
           state = (await api('/api/action',{action:'color',white:colorWhite,color})).state;
           render();
           return;
         }
-        const pick=options.find(x=>x.sum===value); if(!pick) return say('That number does not match the white dice.');
+        if(!pick) return say('That number does not match the white dice.');
         state=(await api('/api/action',{action:'shared',option:pick.key,color})).state;
       } else {
         if(state.turn!==state.you) return say('It is not your roll.');
