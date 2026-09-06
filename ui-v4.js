@@ -13,10 +13,11 @@
   document.head.insertAdjacentHTML('beforeend', `<style>
     .roll{width:430px!important;min-height:270px!important;padding:22px!important}.roll .dice.new-roll .die{animation:roll-in .58s cubic-bezier(.2,.8,.2,1) both}.roll .die:nth-child(2){animation-delay:.07s}.roll .die:nth-child(3){animation-delay:.14s}.roll .die:nth-child(4){animation-delay:.21s}.roll .die:nth-child(5){animation-delay:.28s}.roll .die:nth-child(6){animation-delay:.35s}.roll .die:nth-child(7){animation-delay:.42s}@keyframes roll-in{0%{opacity:0;transform:translateY(-48px) rotate(-80deg)}65%{transform:translateY(7px) rotate(13deg)}100%{opacity:1}}
     .row{grid-template-columns:repeat(11,minmax(9px,1fr)) 25px 36px!important;gap:2px!important}.row>i{display:none}.row-score,.row-lock{display:grid;place-items:center;border-radius:7px;background:#151619;color:#fff;font-size:14px;font-weight:900}.row-lock{background:#f7f4e7;border:1px solid #999}.row-lock img{width:15px;height:15px;object-fit:contain;filter:invert(1)}.cell{font-size:18px!important;font-weight:900!important;opacity:1!important;border-radius:7px!important;color:#fff!important;text-shadow:0 1px 2px #000}.row.red .cell.mark{background:var(--red)!important}.row.yellow .cell.mark{background:var(--yellow)!important}.row.green .cell.mark{background:var(--green)!important}.row.blue .cell.mark{background:var(--blue)!important}.cell.mark{color:#fff!important;text-shadow:0 1px 2px #000;font-size:18px!important}
-    .done{display:block;margin:18px auto 0;border:1px solid #9c7b42;border-radius:8px;background:#311a37;color:#fff4c7;padding:9px 28px;font-weight:900}
+    .cell,.cell.mark{text-shadow:none!important}.cell.mark{height:28px!important;min-width:0!important}.seat-done{margin-left:3px;border:1px solid #a17b43;border-radius:6px;background:#391943;color:#fff1b9;padding:4px 7px;font-size:10px;font-weight:900}.done{display:block;margin:18px auto 0;border:1px solid #9c7b42;border-radius:8px;background:#311a37;color:#fff4c7;padding:9px 28px;font-weight:900}
   </style>`);
   const $ = s => document.querySelector(s);
   document.querySelector('.eyebrow').textContent = 'GAMES';
+  $('#settings').insertAdjacentHTML('beforeend', '<label class="option"><input name="count" type="radio" value="all3"> 3 white dice · use all 3</label>');
   const say = text => { $('#toast').textContent = text; $('#toast').classList.add('show'); setTimeout(() => $('#toast').classList.remove('show'), 3200); };
   async function api(path, body) {
     const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify({...body, token}) : undefined });
@@ -33,15 +34,16 @@
     $('#roundHint').textContent=state.phase==='waiting'?'One player can start the game.':`${names[state.turn]}'s roll`;
     $('.score-title').textContent='GAMES WON';
     $('#people').innerHTML=state.seats.map(s=>`<div class="person"><span>${s.name}<small>${s.live?'Live':'Bot'}</small></span><b>${s.wins}</b></div>`).join('');
-    $('#start').disabled=state.phase!=='waiting'||!state.seats.some(s=>s.live);
+    $('#start').disabled=state.phase==='waiting'&&!state.seats.some(s=>s.live);
     $('#start').innerHTML=state.phase==='waiting'?'Start<br>Game':'New<br>Game';
     $('#seats').innerHTML=state.seats.map(s=>`<div class="seat s${s.seat}"><i>${s.name[0]}</i><b>${s.name}</b></div>`).join('');
+    if (state.phase==='playing'&&state.stage==='shared'&&!state.sharedDone[state.you]) $('.seat.s'+state.you)?.insertAdjacentHTML('beforeend','<button class="seat-done" id="seatDone">Done</button>');
     const title=state.phase==='waiting'?'Dice will roll here':`${names[state.turn]}'s roll`;
-    const mayFinish=state.phase==='playing'&&(state.stage==='shared'?!state.sharedDone[state.you]:state.turn===state.you);
+    const nextRoll=state.phase==='playing'&&state.stage==='awaitingRoll'&&state.turn===state.you;
     const rollSignature = state.dice ? JSON.stringify(state.dice) : '';
     const newRoll = rollSignature !== lastRollSignature;
     lastRollSignature = rollSignature;
-    $('#roll').innerHTML=`<h2>${title}</h2>${state.dice?`<div class="dice ${newRoll?'new-roll':''}">${state.dice.white.map(n=>die(n)).join('')+colors.map(c=>die(state.dice[c],c)).join('')}</div>`:''}${mayFinish?'<button class="done" id="done">Done</button>':''}`;
+    $('#roll').innerHTML=`<h2>${title}</h2>${state.dice?`<div class="dice ${newRoll?'new-roll':''}">${state.dice.white.map(n=>die(n)).join('')+colors.map(c=>die(state.dice[c],c)).join('')}</div>`:''}${nextRoll?'<button class="done" id="nextRoll">Next roll</button>':''}`;
     $('#boards').innerHTML=boardOrder().map((s,index)=>{
       const sheet=state.sheets[s.seat], mine=s.seat===state.you, pos=mine?'bottom':index===0?'top-left':'top-right';
       return `<section class="board ${pos} ${mine?'you':''}"><div class="board-head"><span>${s.name}</span><span>${state.phase==='gameover'?`${s.score} points`:''}</span></div>${colors.map(color=>`<div class="row ${color}"><i></i>${vals(color).map((value,i)=>`<button class="cell ${sheet.marks[color].includes(i)?'mark':''} ${mine?'live':''}" data-color="${color}" data-value="${value}" ${mine&&!sheet.marks[color].includes(i)?'':'disabled'}>${sheet.marks[color].includes(i)?'✕':value}</button>`).join('')}</div>`).join('')}<div class="board-foot"><span>${state.phase==='gameover'?`Score: ${s.score}`:'Penalties: '+sheet.penalties+'/4'}</span>${mine&&s.seat===state.turn&&state.phase==='playing'?`<button class="pass" data-pass="${state.stage}">${state.stage==='shared'?'Use color':'−5 penalty'}</button>`:''}</div></section>`;
@@ -58,19 +60,22 @@
     document.querySelectorAll('.cell.live').forEach(button=>button.onclick=()=>choose(button.dataset.color,Number(button.dataset.value)));
     document.querySelectorAll('.board.you .cell.mark').forEach(button => { button.disabled = false; button.onclick = () => act({action:'undo'}); });
     document.querySelectorAll('[data-pass]').forEach(button => {
-      if (state.stage === 'shared') button.remove();
+      if (state.stage !== 'shared') button.remove();
       else button.textContent = 'White (−5)';
     });
-    $('#done')?.addEventListener('click',()=>act({action:'done'}));
+    $('#seatDone')?.addEventListener('click',()=>act({action:'done'}));
+    $('#nextRoll')?.addEventListener('click',()=>act({action:'nextRoll'}));
     document.querySelectorAll('[data-pass]').forEach(button=>button.onclick=()=>act({action:'penalty'}));
-    document.querySelectorAll('[name="count"]').forEach(x=>{x.checked=Number(x.value)===state.settings.communityDice;x.disabled=state.phase!=='waiting'});
+    document.querySelectorAll('[name="count"]').forEach(x=>{x.checked=state.settings.allThree?x.value==='all3':Number(x.value)===state.settings.communityDice;x.disabled=state.phase!=='waiting'});
   }
   async function choose(color,value) {
     if (state.phase!=='playing') return;
     try {
       if (state.stage==='shared') {
-        const options=[]; state.dice.white.forEach((a,i)=>state.dice.white.forEach((b,j)=>j>i&&options.push({key:`${i}-${j}`,sum:a+b})));
-        const colorWhite = state.turn===state.you && !state.colorUsed && state.dice.white.find(white => white + state.dice[color] === value);
+        const options=[];
+        if (state.settings.allThree) options.push({key:'all-three',sum:state.dice.white.reduce((sum, die)=>sum+die,0)});
+        else state.dice.white.forEach((a,i)=>state.dice.white.forEach((b,j)=>j>i&&options.push({key:`${i}-${j}`,sum:a+b})));
+        const colorWhite = !state.settings.allThree && state.turn===state.you && !state.colorUsed && state.dice.white.find(white => white + state.dice[color] === value);
         if (colorWhite) {
           state = (await api('/api/action',{action:'color',white:colorWhite,color})).state;
           render();
@@ -91,7 +96,7 @@
   async function join(name){try{const x=await api('/api/join',{name});token=x.token;localStorage.setItem('juddQwixxToken',token);state=x.state;$('#modal').classList.add('hide');render()}catch(e){say(e.message)}}
   $('#players').innerHTML=names.map(n=>`<button>${n}</button>`).join(''); document.querySelectorAll('#players button').forEach((b,i)=>b.onclick=()=>join(names[i]));
   $('#start').onclick=()=>act({action:state?.phase==='waiting'?'start':'newGame'}); $('#player').onclick=()=>{if(!token)$('#modal').classList.remove('hide');else say(`You are ${names[state.you]}.`)};
-  $('#settingsButton').onclick=()=>$('#settings').classList.toggle('hide'); document.querySelectorAll('[name="count"]').forEach(x=>x.onchange=()=>act({action:'settings',communityDice:Number(x.value)}));
+  $('#settingsButton').onclick=()=>$('#settings').classList.toggle('hide'); document.querySelectorAll('[name="count"]').forEach(x=>x.onchange=()=>act({action:'settings',mode:x.value}));
   const gameNight=new URLSearchParams(location.hash.slice(1)).get('gameNight')||'https://judd-game-night.onrender.com/'; $('#return').onclick=()=>location.assign(gameNight);
   load(); setInterval(()=>token&&load(),1500);
 })();

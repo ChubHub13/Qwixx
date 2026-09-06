@@ -18,7 +18,7 @@ const rowValues = color => ASCENDING.has(color)
 const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), penalties: 0 });
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
-  settings: { communityDice: 3 }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
+  settings: { communityDice: 3, allThree: false }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
   sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, lastActions: [null, null, null],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
@@ -80,13 +80,14 @@ function undoLastMark(seat) {
   marks.splice(position, 1);
   if (last.index === 10 && !game.sheets.some(sheet => sheet.marks[last.color].includes(10))) game.locked[last.color] = false;
   if (last.kind === 'shared') game.sharedUsed[seat] = false;
-  if (last.kind === 'color') game.colorUsed = false;
+  if (last.kind === 'color' || last.kind === 'all-three') game.colorUsed = false;
   game.lastActions[seat] = null;
   game.prompt = `${NAMES[seat]} took back the last mark.`;
   return true;
 }
 function communityOptions() {
   const white = game.dice.white;
+  if (game.settings.allThree) return [{ key: 'all-three', dice: [0, 1, 2], total: white[0] + white[1] + white[2] }];
   const options = [];
   for (let i = 0; i < white.length; i++) for (let j = i + 1; j < white.length; j++) {
     options.push({ key: `${i}-${j}`, dice: [i, j], total: white[i] + white[j] });
@@ -138,10 +139,8 @@ function checkForEnd() {
 }
 function advanceSharedIfReady() {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
-  if (game.colorUsed) return nextTurn();
-  game.stage = 'color';
-  game.prompt = `${NAMES[game.turn]} may use one white die with one colored die, or take a penalty.`;
-  scheduleBot();
+  game.stage = 'awaitingRoll';
+  game.prompt = `${NAMES[game.turn]} may roll next.`;
 }
 function roll() {
   game.round++;
@@ -152,6 +151,7 @@ function roll() {
   game.colorUsed = false;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
   NAMES.forEach((_, seat) => { if (!isLive(seat)) botShared(seat); });
+  if (!isLive(game.turn) && !game.settings.allThree) botColor(game.turn);
   advanceSharedIfReady();
 }
 function nextTurn() {
@@ -217,10 +217,11 @@ const server = http.createServer((req, res) => {
     const action = body.action;
     if (action === 'settings') {
       if (game.phase !== 'waiting') return fail(res, 'Settings can only change before the game starts.');
-      const count = Number(body.communityDice);
-      if (![2, 3].includes(count)) return fail(res, 'Choose two or three community dice.');
-      game.settings.communityDice = count;
-      game.prompt = `${NAMES[seat]} set ${count} white community dice. ${count === 2 ? 'Five' : 'Seven'} marks are required to close a color.`;
+      const mode = String(body.mode || body.communityDice || '3');
+      if (!['2', '3', 'all3'].includes(mode)) return fail(res, 'Choose a white-dice setting.');
+      game.settings.communityDice = mode === '2' ? 2 : 3;
+      game.settings.allThree = mode === 'all3';
+      game.prompt = `${NAMES[seat]} changed the white-dice setting.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'start') {
@@ -238,7 +239,8 @@ const server = http.createServer((req, res) => {
       const option = communityOptions().find(item => item.key === body.option);
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
-      game.lastActions[seat] = { kind: 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) };
+      game.lastActions[seat] = { kind: game.settings.allThree ? 'all-three' : 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) };
+      if (game.settings.allThree && seat === game.turn) game.colorUsed = true;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'continue') {
@@ -253,12 +255,10 @@ const server = http.createServer((req, res) => {
         advanceSharedIfReady();
         return send(res, { state: snapshot(seat) });
       }
-      if (seat !== game.turn || game.stage !== 'color') return fail(res, 'Only the active player can finish the roll.');
-      nextTurn();
-      return send(res, { state: snapshot(seat) });
+      return fail(res, 'Wait for every player to finish.');
     }
     if (action === 'color') {
-      if (seat !== game.turn || !['shared', 'color'].includes(game.stage)) return fail(res, 'It is not your colored-die step.');
+      if (seat !== game.turn || game.stage !== 'shared') return fail(res, 'It is not your colored-die step.');
       if (game.colorUsed) return fail(res, 'You already used the colored action this round.');
       const white = Number(body.white), color = String(body.color || '');
       if (!game.dice.white.includes(white) || !addMark(seat, color, white + game.dice[color])) return fail(res, 'That box is not available.');
@@ -278,9 +278,16 @@ const server = http.createServer((req, res) => {
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'penalty') {
-      if (seat !== game.turn || game.stage !== 'color') return fail(res, 'Only the active player can take a penalty.');
+      if (seat !== game.turn || game.stage !== 'shared') return fail(res, 'Only the active player can take a penalty.');
       game.sheets[seat].penalties++;
+      game.colorUsed = true;
+      game.sharedDone[seat] = true;
       game.prompt = `${NAMES[seat]} took a −5 penalty.`;
+      advanceSharedIfReady();
+      return send(res, { state: snapshot(seat) });
+    }
+    if (action === 'nextRoll') {
+      if (seat !== game.turn || game.stage !== 'awaitingRoll') return fail(res, 'Wait for every player to finish first.');
       nextTurn();
       return send(res, { state: snapshot(seat) });
     }
