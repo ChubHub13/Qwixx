@@ -19,7 +19,7 @@ const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])),
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
   settings: { communityDice: 3, allThree: false }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, lastActions: [null, null, null],
+  sheets: [blankSheet(), blankSheet(), blankSheet()], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, lastActions: [null, null, null],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -38,7 +38,7 @@ function score(sheet) {
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
-    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedDone: game.sharedDone, colorUsed: game.colorUsed, gameNumber, prompt: game.prompt, you,
+    settings: game.settings, locked: game.locked, sheets: game.sheets, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
@@ -102,12 +102,20 @@ function bestMark(seat, total, onlyColor, maxSkipped = Infinity) {
       const marks = game.sheets[seat].marks[color];
       const lastIndex = marks.length ? Math.max(...marks) : -1;
       const skipped = index - lastIndex - 1;
-      if (validMark(seat, color, total) && skipped <= maxSkipped) {
+      if (validMark(seat, color, total) && (skipped <= maxSkipped || index === 10)) {
         candidates.push({ color, value: total, index, skipped });
       }
     }
   }
-  return candidates.sort((a, b) => b.index - a.index)[0];
+  const locking = candidates.filter(move => move.index === 10 && !shouldAvoidGameEndingLock(seat, move));
+  const preferred = locking.length ? locking : candidates;
+  return preferred.sort((a, b) => a.skipped - b.skipped || b.index - a.index)[0];
+}
+function shouldAvoidGameEndingLock(seat, move) {
+  if (move.index !== 10 || COLORS.filter(color => game.locked[color]).length < 1) return false;
+  const projected = score(game.sheets[seat]) + game.sheets[seat].marks[move.color].length + 1;
+  const leader = Math.max(...game.sheets.map(score).filter((_, index) => index !== seat));
+  return projected < leader - 10;
 }
 function botShared(seat) {
   const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total, null, 2) }))
@@ -139,12 +147,14 @@ function checkForEnd() {
 }
 function advanceSharedIfReady() {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
+  if (checkForEnd()) return;
+  game.turn = (game.turn + 1) % NAMES.length;
   game.stage = 'awaitingRoll';
   game.prompt = `${NAMES[game.turn]} may roll next.`;
   if (!isLive(game.turn)) {
     clearTimeout(botTimer);
     botTimer = setTimeout(() => {
-      if (game.phase === 'playing' && game.stage === 'awaitingRoll' && !isLive(game.turn)) nextTurn();
+      if (game.phase === 'playing' && game.stage === 'awaitingRoll' && !isLive(game.turn)) roll();
     }, 850);
   }
 }
@@ -155,6 +165,7 @@ function roll() {
   game.sharedUsed = [false, false, false];
   game.sharedDone = [false, false, false];
   game.colorUsed = false;
+  game.rerolled = false;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
   NAMES.forEach((_, seat) => { if (!isLive(seat)) botShared(seat); });
   if (!isLive(game.turn) && !game.settings.allThree) botColor(game.turn);
@@ -215,6 +226,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/state') {
     const seat = seatForToken(url.searchParams.get('token'));
     if (seat === undefined) return fail(res, 'Choose a player first.', 401);
+    if (game.phase === 'playing' && game.stage === 'awaitingRoll' && !isLive(game.turn)) roll();
     return send(res, { state: snapshot(seat) });
   }
   if (url.pathname === '/api/action' && req.method === 'POST') return readJson(req, body => {
@@ -222,7 +234,6 @@ const server = http.createServer((req, res) => {
     if (seat === undefined) return fail(res, 'Choose a player first.', 401);
     const action = body.action;
     if (action === 'settings') {
-      if (game.phase !== 'waiting') return fail(res, 'Settings can only change before the game starts.');
       const mode = String(body.mode || body.communityDice || '3');
       if (!['2', '3', 'all3'].includes(mode)) return fail(res, 'Choose a white-dice setting.');
       game.settings.communityDice = mode === '2' ? 2 : 3;
@@ -272,6 +283,17 @@ const server = http.createServer((req, res) => {
       game.lastActions[seat] = { kind: 'color', color, index: rowValues(color).indexOf(white + game.dice[color]) };
       return send(res, { state: snapshot(seat) });
     }
+    if (action === 'reroll') {
+      const index = Number(body.index);
+      const equalWhiteDice = game.dice.white.length === 3 && new Set(game.dice.white).size === 1;
+      if (seat !== game.turn || game.stage !== 'shared' || game.rerolled || !equalWhiteDice || ![0, 1, 2].includes(index)) {
+        return fail(res, 'That white die cannot be re-rolled now.');
+      }
+      game.dice.white[index] = rollDie();
+      game.rerolled = true;
+      game.prompt = `${NAMES[seat]} re-rolled one matching white die.`;
+      return send(res, { state: snapshot(seat) });
+    }
     if (action === 'undo') {
       if (game.stage === 'shared' && game.sharedDone[seat]) return fail(res, 'You already finished this turn.');
       if (game.stage === 'color' && seat !== game.turn) return fail(res, 'It is not your roll.');
@@ -294,7 +316,7 @@ const server = http.createServer((req, res) => {
     }
     if (action === 'nextRoll') {
       if (seat !== game.turn || game.stage !== 'awaitingRoll') return fail(res, 'Wait for every player to finish first.');
-      nextTurn();
+      roll();
       return send(res, { state: snapshot(seat) });
     }
     return fail(res, 'Unknown action.');
