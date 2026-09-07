@@ -19,7 +19,7 @@ const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])),
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
   settings: { communityDice: 3, allThree: false }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, lastActions: [null, null, null],
+  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, actions: [[], [], []],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -68,27 +68,29 @@ function addMark(seat, color, value) {
   game.highlights[seat].push({ color, index });
   if (index === 10) {
     game.sheets[seat].locks[color] = true;
-    game.locked[color] = true;
-    game.prompt = `${NAMES[seat]} locked the ${color} row.`;
+    game.prompt = `${NAMES[seat]} is eligible to lock the ${color} row.`;
   }
   return true;
 }
-function undoLastMark(seat) {
-  const last = game.lastActions[seat];
-  if (!last) return false;
-  const marks = game.sheets[seat].marks[last.color];
-  const position = marks.lastIndexOf(last.index);
+function undoMark(seat, color, index) {
+  const actions = game.actions[seat];
+  const actionPosition = actions.findIndex(action => action.color === color && action.index === index);
+  if (actionPosition < 0) return false;
+  const action = actions[actionPosition];
+  const marks = game.sheets[seat].marks[action.color];
+  const position = marks.lastIndexOf(action.index);
   if (position < 0) return false;
   marks.splice(position, 1);
-  game.highlights[seat] = game.highlights[seat].filter(mark => !(mark.color === last.color && mark.index === last.index));
-  if (last.index === 10) {
-    game.sheets[seat].locks[last.color] = false;
-    if (!game.sheets.some(sheet => sheet.marks[last.color].includes(10))) game.locked[last.color] = false;
+  actions.splice(actionPosition, 1);
+  const highlightPosition = game.highlights[seat].findIndex(mark => mark.color === action.color && mark.index === action.index);
+  if (highlightPosition >= 0) game.highlights[seat].splice(highlightPosition, 1);
+  if (action.index === 10) {
+    game.sheets[seat].locks[action.color] = false;
+    if (!game.sheets.some(sheet => sheet.marks[action.color].includes(10))) game.locked[action.color] = false;
   }
-  if (last.kind === 'shared') game.sharedUsed[seat] = false;
-  if (last.kind === 'color' || last.kind === 'all-three') game.colorUsed = false;
-  game.lastActions[seat] = null;
-  game.prompt = `${NAMES[seat]} took back the last mark.`;
+  game.sharedUsed[seat] = actions.some(item => item.kind === 'shared' || item.kind === 'all-three');
+  if (seat === game.turn) game.colorUsed = actions.some(item => item.kind === 'color' || item.kind === 'all-three');
+  game.prompt = `${NAMES[seat]} took back a mark.`;
   return true;
 }
 function communityOptions() {
@@ -100,7 +102,13 @@ function communityOptions() {
   if (game.settings.allThree) options.push({ key: 'all-three', dice: [0, 1, 2], total: white[0] + white[1] + white[2] });
   return options;
 }
-function bestMark(seat, total, onlyColor, maxSkipped = Infinity) {
+function botMoveValue(seat, move) {
+  const marksInRow = game.sheets[seat].marks[move.color].length;
+  const startingBonus = marksInRow === 0 ? (ASCENDING.has(move.color) ? 1.2 : 0.35) : 0;
+  const closingBonus = move.index === 10 ? 20 : marksInRow >= requiredToClose() - 1 ? 1 : 0;
+  return closingBonus + startingBonus + move.index * 0.06 - move.skipped * 0.85;
+}
+function bestMark(seat, total, onlyColor, maxSkipped = Infinity, twoPlayPlan = false) {
   const candidates = [];
   for (const color of onlyColor ? [onlyColor] : COLORS) {
     if (!game.locked[color]) {
@@ -114,8 +122,8 @@ function bestMark(seat, total, onlyColor, maxSkipped = Infinity) {
     }
   }
   const locking = candidates.filter(move => move.index === 10 && !shouldAvoidGameEndingLock(seat, move));
-  const preferred = locking.length ? locking : candidates.filter(move => botShouldPlayMove(seat, move));
-  return preferred.sort((a, b) => a.skipped - b.skipped || b.index - a.index)[0];
+  const preferred = locking.length ? locking : candidates.filter(move => botShouldPlayMove(seat, move, twoPlayPlan));
+  return preferred.sort((a, b) => botMoveValue(seat, b) - botMoveValue(seat, a) || a.skipped - b.skipped || b.index - a.index)[0];
 }
 function shouldAvoidGameEndingLock(seat, move) {
   if (move.index !== 10 || COLORS.filter(color => game.locked[color]).length < 1) return false;
@@ -123,19 +131,29 @@ function shouldAvoidGameEndingLock(seat, move) {
   const leader = Math.max(...game.sheets.map(score).filter((_, index) => index !== seat));
   return projected < leader - 10;
 }
-function botShouldPlayMove(seat, move) {
+function botShouldPlayMove(seat, move, twoPlayPlan = false) {
   if (move.index === 10) return !shouldAvoidGameEndingLock(seat, move);
   if (move.skipped === 0) return true;
   const closedColors = COLORS.filter(color => game.locked[color]).length;
   const marksInRow = game.sheets[seat].marks[move.color].length;
   const nearLock = marksInRow >= requiredToClose() - 1;
-  if (move.skipped === 1) return game.round >= 7 || closedColors >= 1 || nearLock;
-  if (move.skipped === 2) return closedColors >= 1 && nearLock;
+  if (move.skipped === 1) return game.round >= 7 || closedColors >= 1 || nearLock || (marksInRow === 0 && ASCENDING.has(move.color)) || twoPlayPlan;
+  if (move.skipped === 2) return (closedColors >= 1 && nearLock) || (twoPlayPlan && (nearLock || (marksInRow === 0 && ASCENDING.has(move.color))));
   return false;
 }
+function botCanFollowWithColor(seat) {
+  return COLORS.some(color => game.dice.white.some(white => {
+    const value = white + game.dice[color];
+    const index = rowValues(color).indexOf(value);
+    if (!validMark(seat, color, value)) return false;
+    const marks = game.sheets[seat].marks[color];
+    return botShouldPlayMove(seat, { color, value, index, skipped: index - (marks.length ? Math.max(...marks) : -1) - 1 }, true);
+  }));
+}
 function botShared(seat) {
-  const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total, null, 2) }))
-    .filter(item => item.move).sort((a, b) => a.move.skipped - b.move.skipped || b.move.index - a.move.index)[0];
+  const twoPlayPlan = seat === game.turn && botCanFollowWithColor(seat);
+  const choice = communityOptions().map(option => ({ option, move: bestMark(seat, option.total, null, 2, twoPlayPlan) }))
+    .filter(item => item.move).sort((a, b) => botMoveValue(seat, b.move) - botMoveValue(seat, a.move) || a.move.skipped - b.move.skipped)[0];
   if (choice) {
     addMark(seat, choice.move.color, choice.move.value);
     if (choice.option.key === 'all-three' && seat === game.turn) game.colorUsed = true;
@@ -182,9 +200,15 @@ function checkForEnd() {
   }
   return false;
 }
+function finalizeSharedLocks() {
+  for (const color of COLORS) {
+    if (game.sheets.some(sheet => sheet.locks[color])) game.locked[color] = true;
+  }
+}
 function advanceSharedIfReady() {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
   game.highlights = [[], [], []];
+  finalizeSharedLocks();
   if (checkForEnd()) return;
   game.turn = (game.turn + 1) % NAMES.length;
   game.stage = 'awaitingRoll';
@@ -302,7 +326,7 @@ const server = http.createServer((req, res) => {
       const option = communityOptions().find(item => item.key === body.option);
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
-      game.lastActions[seat] = { kind: game.settings.allThree ? 'all-three' : 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) };
+      game.actions[seat].push({ kind: option.key === 'all-three' ? 'all-three' : 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) });
       if (option.key === 'all-three' && seat === game.turn) game.colorUsed = true;
       return send(res, { state: snapshot(seat) });
     }
@@ -329,7 +353,7 @@ const server = http.createServer((req, res) => {
       const white = Number(body.white), color = String(body.color || '');
       if (!game.dice.white.includes(white) || !addMark(seat, color, white + game.dice[color])) return fail(res, 'That box is not available.');
       game.colorUsed = true;
-      game.lastActions[seat] = { kind: 'color', color, index: rowValues(color).indexOf(white + game.dice[color]) };
+      game.actions[seat].push({ kind: 'color', color, index: rowValues(color).indexOf(white + game.dice[color]) });
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'reroll') {
@@ -346,7 +370,7 @@ const server = http.createServer((req, res) => {
     if (action === 'undo') {
       if (game.stage === 'shared' && game.sharedDone[seat]) return fail(res, 'You already finished this turn.');
       if (game.stage === 'color' && seat !== game.turn) return fail(res, 'It is not your roll.');
-      if (!undoLastMark(seat)) return fail(res, 'There is no mark to undo.');
+      if (!undoMark(seat, String(body.color || ''), Number(body.index))) return fail(res, 'That mark can no longer be undone.');
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'end') {
