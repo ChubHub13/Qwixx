@@ -18,7 +18,7 @@ const rowValues = color => ASCENDING.has(color)
 const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), locks: Object.fromEntries(COLORS.map(c => [c, false])), penalties: 0 });
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
-  settings: { communityDice: 3, allThree: false }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
+  settings: { communityDice: 3, allThree: true }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
   sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, actions: [[], [], []],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
@@ -142,7 +142,7 @@ function botShouldPlayMove(seat, move, twoPlayPlan = false) {
   return false;
 }
 function botCanFollowWithColor(seat) {
-  return COLORS.some(color => game.dice.white.some(white => {
+  return COLORS.filter(color => !game.locked[color]).some(color => game.dice.white.some(white => {
     const value = white + game.dice[color];
     const index = rowValues(color).indexOf(value);
     if (!validMark(seat, color, value)) return false;
@@ -164,7 +164,7 @@ function botShared(seat) {
 }
 function botColor(seat) {
   let best;
-  for (const color of COLORS) for (const white of game.dice.white) {
+  for (const color of COLORS.filter(color => !game.locked[color])) for (const white of game.dice.white) {
     const move = bestMark(seat, white + game.dice[color], color, 2);
     if (move && (!best || move.skipped < best.skipped || (move.skipped === best.skipped && move.index > best.index))) best = move;
   }
@@ -179,7 +179,7 @@ function forcedBotMove(seat) {
       if (validMark(seat, color, option.total)) candidates.push({ color, value: option.total, index, skipped: index - (game.sheets[seat].marks[color].length ? Math.max(...game.sheets[seat].marks[color]) : -1) - 1 });
     }
   }
-  for (const color of COLORS) for (const white of game.dice.white) {
+  for (const color of COLORS.filter(color => !game.locked[color])) for (const white of game.dice.white) {
     const value = white + game.dice[color], index = rowValues(color).indexOf(value);
     if (validMark(seat, color, value)) candidates.push({ color, value, index, skipped: index - (game.sheets[seat].marks[color].length ? Math.max(...game.sheets[seat].marks[color]) : -1) - 1 });
   }
@@ -222,7 +222,10 @@ function advanceSharedIfReady() {
 }
 function roll() {
   game.round++;
-  game.dice = { white: Array.from({ length: game.settings.communityDice }, rollDie), red: rollDie(), yellow: rollDie(), green: rollDie(), blue: rollDie() };
+  game.dice = {
+    white: Array.from({ length: game.settings.communityDice }, rollDie),
+    ...Object.fromEntries(COLORS.filter(color => !game.locked[color]).map(color => [color, rollDie()]))
+  };
   game.stage = 'shared';
   game.sharedUsed = [false, false, false];
   game.sharedDone = [false, false, false];
