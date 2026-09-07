@@ -19,7 +19,7 @@ const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])),
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
   settings: { communityDice: 3, allThree: true }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, actions: [[], [], []],
+  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, cyclingDie: null, actions: [[], [], []],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -38,7 +38,7 @@ function score(sheet) {
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
-    settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, gameNumber, prompt: game.prompt, you,
+    settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
@@ -232,6 +232,7 @@ function roll() {
   game.highlights = [[], [], []];
   game.colorUsed = false;
   game.rerolled = false;
+  game.cyclingDie = null;
   game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
   let activeBotMoved = false;
   NAMES.forEach((_, seat) => {
@@ -362,12 +363,15 @@ const server = http.createServer((req, res) => {
     if (action === 'reroll') {
       const index = Number(body.index);
       const equalWhiteDice = game.dice.white.length === 3 && new Set(game.dice.white).size === 1;
-      if (seat !== game.turn || game.stage !== 'shared' || game.rerolled || !equalWhiteDice || ![0, 1, 2].includes(index)) {
-        return fail(res, 'That white die cannot be re-rolled now.');
+      const beginningCycle = game.cyclingDie === null && equalWhiteDice;
+      const continuingCycle = game.cyclingDie === index;
+      if (seat !== game.turn || game.stage !== 'shared' || game.sharedUsed[seat] || game.sharedDone[seat] || ![0, 1, 2].includes(index) || (!beginningCycle && !continuingCycle)) {
+        return fail(res, 'Choose a matching white die before playing a number.');
       }
-      game.dice.white[index] = rollDie();
+      game.dice.white[index] = game.dice.white[index] === 6 ? 1 : game.dice.white[index] + 1;
       game.rerolled = true;
-      game.prompt = `${NAMES[seat]} re-rolled one matching white die.`;
+      game.cyclingDie = index;
+      game.prompt = `${NAMES[seat]} is choosing a value for one white die.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'undo') {
@@ -401,7 +405,7 @@ const server = http.createServer((req, res) => {
   const requested = url.pathname === '/' ? '/qwixx.html' : url.pathname;
   const file = path.resolve(__dirname, `.${requested}`);
   if (!file.startsWith(__dirname) || !fs.existsSync(file)) { res.writeHead(404); return res.end('Not found'); }
-  const contentType = path.extname(file) === '.html' ? 'text/html; charset=utf-8' : path.extname(file) === '.js' ? 'application/javascript; charset=utf-8' : 'application/octet-stream';
+  const contentType = path.extname(file) === '.html' ? 'text/html; charset=utf-8' : path.extname(file) === '.js' ? 'application/javascript; charset=utf-8' : path.extname(file) === '.png' ? 'image/png' : 'application/octet-stream';
   if (requested === '/qwixx.html') {
     const page = fs.readFileSync(file, 'utf8');
     res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
