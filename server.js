@@ -17,7 +17,7 @@ const rowValues = color => ASCENDING.has(color)
   : [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
 const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), locks: Object.fromEntries(COLORS.map(c => [c, false])), penalties: 0 });
 const newGame = () => ({
-  phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null,
+  phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null, diceLayout: { white: [], colors: [] },
   settings: { communityDice: 3, allThree: true }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
   sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, cyclingDie: null, actions: [[], [], []],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
@@ -25,6 +25,23 @@ const newGame = () => ({
 let game = newGame();
 
 function rollDie() { return crypto.randomInt(1, 7); }
+function shuffled(items) {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index--) {
+    const swap = crypto.randomInt(index + 1);
+    [copy[index], copy[swap]] = [copy[swap], copy[index]];
+  }
+  return copy;
+}
+function rollLayout() {
+  const decorate = entries => shuffled(entries).map((entry, index) => ({
+    ...entry, x: crypto.randomInt(-4, 5), y: crypto.randomInt(-5, 6), rotate: crypto.randomInt(-8, 9), delay: index * .07
+  }));
+  return {
+    white: decorate(game.dice.white.map((_, index) => ({ index }))),
+    colors: decorate(COLORS.filter(color => game.dice[color] !== undefined).map(color => ({ color })))
+  };
+}
 function requiredToClose() { return game.settings.communityDice === 2 ? 5 : 7; }
 function seatForToken(token) { for (const [seat, data] of seats) if (data.token === token) return seat; return undefined; }
 function isLive(seat) { return seats.has(seat); }
@@ -37,7 +54,7 @@ function score(sheet) {
 }
 function snapshot(you) {
   return {
-    phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice,
+    phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice, diceLayout: game.diceLayout,
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
@@ -228,6 +245,7 @@ function roll() {
     white: Array.from({ length: game.settings.communityDice }, rollDie),
     ...Object.fromEntries(COLORS.filter(color => !game.locked[color]).map(color => [color, rollDie()]))
   };
+  game.diceLayout = rollLayout();
   game.stage = 'shared';
   game.sharedUsed = [false, false, false];
   game.sharedDone = [false, false, false];
