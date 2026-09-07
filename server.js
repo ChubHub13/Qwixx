@@ -403,20 +403,7 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(__dirname) || !fs.existsSync(file)) { res.writeHead(404); return res.end('Not found'); }
   const contentType = path.extname(file) === '.html' ? 'text/html; charset=utf-8' : path.extname(file) === '.js' ? 'application/javascript; charset=utf-8' : 'application/octet-stream';
   if (requested === '/qwixx.html') {
-    // Keep the Qwixx page's visual language aligned with the other Game Night tables.
-    const originalPage = fs.readFileSync(file, 'utf8')
-      .replace('FIVE CROWNS', 'QWIXX')
-      .replace('Three players · eleven rounds · lowest score wins', 'Three players · shared-dice table')
-      .replace('<div class="qwixx">Qwixx</div>', '')
-      .replace('Everyone may choose one community total.', 'Community dice are ready.')
-      .replace('Five marks are required to close a color.', '')
-      .replace('Default. Choose one of the three pair totals; seven marks are required to close a color.', '')
-      .replace('>♛<', '>⚄<');
-    const inlineStart = originalPage.indexOf('<script>');
-    const inlineEnd = originalPage.lastIndexOf('</script>');
-    const page = inlineStart >= 0 && inlineEnd >= inlineStart
-      ? `${originalPage.slice(0, inlineStart)}<script src="/ui-v4.js?v=20260907-layout4"></script>${originalPage.slice(inlineEnd + 9)}`
-      : originalPage;
+    const page = fs.readFileSync(file, 'utf8');
     res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
     return res.end(page);
   }
