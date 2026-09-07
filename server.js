@@ -415,12 +415,12 @@ const server = http.createServer((req, res) => {
     const inlineStart = originalPage.indexOf('<script>');
     const inlineEnd = originalPage.lastIndexOf('</script>');
     const page = inlineStart >= 0 && inlineEnd >= inlineStart
-      ? `${originalPage.slice(0, inlineStart)}<script src="/ui-v4.js"></script>${originalPage.slice(inlineEnd + 9)}`
+      ? `${originalPage.slice(0, inlineStart)}<script src="/ui-v4.js?v=20260906-layout3"></script>${originalPage.slice(inlineEnd + 9)}`
       : originalPage;
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
     return res.end(page);
   }
-  res.writeHead(200, { 'Content-Type': contentType });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': requested === '/ui-v4.js' ? 'no-store' : 'public, max-age=3600' });
   fs.createReadStream(file).pipe(res);
 });
 server.listen(PORT, '0.0.0.0', () => console.log(`Qwixx listening on 0.0.0.0:${PORT}`));
