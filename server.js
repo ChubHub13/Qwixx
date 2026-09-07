@@ -205,14 +205,16 @@ function finalizeSharedLocks() {
     if (game.sheets.some(sheet => sheet.locks[color])) game.locked[color] = true;
   }
 }
-function advanceSharedIfReady() {
+function advanceSharedIfReady(lastDoneSeat) {
   if (!game.sharedDone.every(Boolean) || game.phase !== 'playing' || game.stage !== 'shared') return;
   game.highlights = [[], [], []];
   finalizeSharedLocks();
   if (checkForEnd()) return;
-  game.turn = (game.turn + 1) % NAMES.length;
+  const nextSeat = (game.turn + 1) % NAMES.length;
+  game.turn = nextSeat;
   game.stage = 'awaitingRoll';
   game.prompt = `${NAMES[game.turn]} may roll next.`;
+  if (lastDoneSeat === nextSeat && isLive(nextSeat)) return roll();
   if (!isLive(game.turn)) {
     clearTimeout(botTimer);
     botTimer = setTimeout(() => {
@@ -266,9 +268,20 @@ function scheduleBot() {
 }
 function start() {
   const oldSettings = game.settings;
+  const oldScores = game.sheets.map(score);
+  const firstGame = game.phase === 'waiting' && gameNumber === 1;
+  let firstSeat;
+  if (firstGame) {
+    firstSeat = crypto.randomInt(NAMES.length);
+  } else {
+    const lowestScore = Math.min(...oldScores);
+    const eligible = oldScores.map((value, seat) => ({ value, seat })).filter(item => item.value === lowestScore);
+    firstSeat = eligible[crypto.randomInt(eligible.length)].seat;
+  }
   if (game.phase === 'gameover') gameNumber++;
   game = newGame();
   game.settings = oldSettings;
+  game.turn = firstSeat;
   game.phase = 'playing';
   roll();
 }
@@ -337,7 +350,7 @@ const server = http.createServer((req, res) => {
     if (action === 'continue') {
       if (game.stage !== 'shared') return fail(res, 'The shared step has ended.');
       game.sharedDone[seat] = true;
-      advanceSharedIfReady();
+      advanceSharedIfReady(seat);
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'done') {
@@ -346,7 +359,7 @@ const server = http.createServer((req, res) => {
           return fail(res, 'The roller must mark a number or take white before finishing.');
         }
         game.sharedDone[seat] = true;
-        advanceSharedIfReady();
+        advanceSharedIfReady(seat);
         return send(res, { state: snapshot(seat) });
       }
       return fail(res, 'Wait for every player to finish.');
@@ -391,7 +404,7 @@ const server = http.createServer((req, res) => {
       game.colorUsed = true;
       game.sharedDone[seat] = true;
       game.prompt = `${NAMES[seat]} took a −5 penalty.`;
-      advanceSharedIfReady();
+      advanceSharedIfReady(seat);
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'nextRoll') {
