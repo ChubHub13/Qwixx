@@ -17,7 +17,7 @@ const rowValues = color => ASCENDING.has(color)
   : [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
 const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), locks: Object.fromEntries(COLORS.map(c => [c, false])), penalties: 0 });
 const newGame = () => ({
-  phase: 'waiting', turn: 0, stage: 'shared', round: 0, dice: null, diceLayout: { white: [], colors: [] },
+  phase: 'waiting', turn: 0, stage: 'shared', round: 0, rollId: 0, dice: null, diceLayout: { white: [], colors: [] },
   settings: { communityDice: 3, allThree: true }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
   sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, cyclingDie: null, actions: [[], [], []],
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
@@ -54,7 +54,7 @@ function score(sheet) {
 }
 function snapshot(you) {
   return {
-    phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, dice: game.dice, diceLayout: game.diceLayout,
+    phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
@@ -241,6 +241,7 @@ function advanceSharedIfReady(lastDoneSeat) {
 }
 function roll() {
   game.round++;
+  game.rollId++;
   game.dice = {
     white: Array.from({ length: game.settings.communityDice }, rollDie),
     ...Object.fromEntries(COLORS.filter(color => !game.locked[color]).map(color => [color, rollDie()]))
