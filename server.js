@@ -415,7 +415,7 @@ const server = http.createServer((req, res) => {
     const inlineStart = originalPage.indexOf('<script>');
     const inlineEnd = originalPage.lastIndexOf('</script>');
     const page = inlineStart >= 0 && inlineEnd >= inlineStart
-      ? `${originalPage.slice(0, inlineStart)}<script src="/ui-v4.js?v=20260906-layout3"></script>${originalPage.slice(inlineEnd + 9)}`
+      ? `${originalPage.slice(0, inlineStart)}<script src="/ui-v4.js?v=20260907-layout4"></script>${originalPage.slice(inlineEnd + 9)}`
       : originalPage;
     res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
     return res.end(page);
