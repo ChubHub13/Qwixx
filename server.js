@@ -19,7 +19,7 @@ const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])),
 const newGame = () => ({
   phase: 'waiting', turn: 0, stage: 'shared', round: 0, rollId: 0, dice: null, diceLayout: { white: [], colors: [] },
   settings: { communityDice: 3, allThree: true, firstTurnReroll: true }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
-  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, cyclingDie: null, actions: [[], [], []], lockNotice: null, closingColor: null, turnsTaken: [0, 0, 0], rescueUsed: [false, false, false], rollBaseSheets: null,
+  sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, cyclingDie: null, actions: [[], [], []], lockNotice: null, closingColor: null, turnsTaken: [0, 0, 0], rescueUsed: [false, false, false], rollBaseSheets: null, botTurnResolved: false,
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
 });
 let game = newGame();
@@ -52,6 +52,7 @@ function score(sheet) {
   }, 0);
   return points - sheet.penalties * 5;
 }
+function takeWhite(seat) { game.sheets[seat].penalties = Math.min(4, game.sheets[seat].penalties + 1); }
 function snapshot(you) {
   return {
     phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
@@ -240,7 +241,7 @@ function forcedBotMove(seat) {
 }
 function checkForEnd() {
   const locks = COLORS.filter(color => game.locked[color]).length;
-  const penalties = game.sheets.some(sheet => sheet.penalties >= 4);
+  const penalties = game.sheets.some(sheet => sheet.penalties === 4);
   if (locks >= 2 || penalties) {
     game.phase = 'gameover';
     const scores = game.sheets.map(score);
@@ -291,8 +292,15 @@ function resolveBotsForShared() {
     const moved = botShared(seat);
     if (seat === game.turn) activeBotMoved = moved;
   }
-  if (!isLive(game.turn) && !game.colorUsed) activeBotMoved = botColor(game.turn) || activeBotMoved;
-  if (!isLive(game.turn) && !activeBotMoved && !forcedBotMove(game.turn)) game.sheets[game.turn].penalties++;
+  // A bot gets exactly one full turn resolution per roll. Live players may
+  // submit at different times, so this must not re-run on every submission.
+  if (!isLive(game.turn) && !game.botTurnResolved) {
+    let moved = activeBotMoved;
+    if (!game.colorUsed) moved = botColor(game.turn) || moved;
+    if (!moved) moved = forcedBotMove(game.turn);
+    if (!moved) takeWhite(game.turn);
+    game.botTurnResolved = true;
+  }
 }
 function settleShared(lastDoneSeat) {
   resolveBotsForShared();
@@ -315,6 +323,7 @@ function roll(countAsTurn = true) {
   // marked as used after a player reverses a current-roll selection.
   game.actions = [[], [], []];
   game.closingColor = null;
+  game.botTurnResolved = false;
   game.colorUsed = false;
   game.rerolled = false;
   game.cyclingDie = null;
@@ -366,7 +375,7 @@ function finishColorAction() {
   const sheet = game.sheets[active];
   const hasMark = COLORS.some(color => sheet.marks[color].length > 0) || sheet.penalties > 0;
   // A player who does not make a colored mark takes a penalty. Shared marks are not tracked as an obligation.
-  if (!hasMark) sheet.penalties++;
+  if (!hasMark) takeWhite(active);
   nextTurn();
 }
 
@@ -499,7 +508,7 @@ const server = http.createServer((req, res) => {
     }
     if (action === 'penalty') {
       if (seat !== game.turn || game.stage !== 'shared') return fail(res, 'Only the active player can take a penalty.');
-      game.sheets[seat].penalties++;
+      takeWhite(seat);
       game.colorUsed = true;
       game.sharedDone[seat] = true;
       game.prompt = `${NAMES[seat]} took a −5 penalty.`;
