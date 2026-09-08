@@ -19,9 +19,10 @@
     .cell,.cell.mark{text-shadow:none!important}.cell.mark{height:28px!important;min-width:0!important}.board-foot{min-height:38px}.side-actions{grid-template-columns:1fr}.seat-done{margin-left:3px;border:1px solid #a17b43;border-radius:6px;background:#391943;color:#fff1b9;padding:4px 7px;font-size:10px;font-weight:900}.done{display:block;margin:18px auto 0;border:1px solid #9c7b42;border-radius:8px;background:#311a37;color:#fff4c7;padding:9px 28px;font-weight:900}
   </style>`);
   const $ = s => document.querySelector(s);
+  $('#settings').insertAdjacentHTML('beforeend', '<label class="option"><input id="firstTurnReroll" type="checkbox" checked> First-turn reroll if every play skips 3+</label>');
   document.body.insertAdjacentHTML('beforeend', `<style>
     .cell.recent{outline:3px solid #000!important;outline-offset:-3px}.row-lock{opacity:.2}.row.closable .row-lock,.row.locked .row-lock{opacity:1}.row.locked.red .cell:not(.mark){background:#fff!important;color:var(--red)!important}.row.locked.yellow .cell:not(.mark){background:#fff!important;color:var(--yellow)!important}.row.locked.green .cell:not(.mark){background:#fff!important;color:var(--green)!important}.row.locked.blue .cell:not(.mark){background:#fff!important;color:var(--blue)!important}.row.locked.red .row-lock{background:var(--red)!important}.row.locked.yellow .row-lock{background:var(--yellow)!important}.row.locked.green .row-lock{background:var(--green)!important}.row.locked.blue .row-lock{background:var(--blue)!important}.row.locked .row-lock img{filter:invert(1)}
-    .lock-notice{position:absolute;z-index:6;top:58px;left:50%;width:126px;transform:translateX(-50%);padding:8px 6px;border:1px solid #e8ca64;border-radius:10px;background:#170a1bea;color:#fff1b3;text-align:center;box-shadow:0 7px 20px #001713;animation:lock-notice-in .38s ease-out both}.lock-notice strong{display:block;color:#ffe26e;font:900 10px Georgia,serif;letter-spacing:.08em}.lock-notice span{display:block;margin-top:3px;font-size:10px;font-weight:800;line-height:1.15}@keyframes lock-notice-in{from{opacity:0;transform:translate(-50%,-12px) scale(.9)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+    .lock-notice{position:absolute;z-index:6;top:58px;left:50%;width:126px;transform:translateX(-50%);padding:8px 6px;border:2px solid #e8ca64;border-radius:10px;background:#170a1bea;color:#fff1b3;text-align:center;box-shadow:0 7px 20px #001713;animation:lock-notice-in .38s ease-out both}.lock-notice.red{background:var(--red)}.lock-notice.yellow{background:var(--yellow);color:#201a08}.lock-notice.green{background:var(--green)}.lock-notice.blue{background:var(--blue)}.lock-notice strong{display:block;color:#fff;font:900 10px Georgia,serif;letter-spacing:.08em}.lock-notice.yellow strong{color:#201a08}.lock-notice span{display:block;margin-top:3px;font-size:10px;font-weight:800;line-height:1.15}@keyframes lock-notice-in{from{opacity:0;transform:translate(-50%,-12px) scale(.9)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
     .winner{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:#020305d9}.winner-card{position:relative;width:min(500px,92vw);overflow:hidden;padding:30px;border:2px solid #e9ca68;border-radius:20px;background:linear-gradient(145deg,#361142,#150819);text-align:center;box-shadow:0 25px 80px #000}.winner-card h1{margin:0 0 15px;color:#ffeb9a;font:900 34px Georgia,serif}.winner-score{display:flex;justify-content:space-between;padding:9px;border-bottom:1px solid #724779;font-weight:800}.winner-card button{margin-top:20px;border:1px solid #ba8e3e;border-radius:9px;background:#9a394c;color:#fff6d2;padding:10px 20px;font-weight:900}.confetti{position:absolute;width:9px;height:15px;top:-20px;animation:fall 2.5s linear 1 forwards}@keyframes fall{to{transform:translateY(460px) rotate(740deg);opacity:0}}
     @media (min-width:581px){.shell{min-height:calc(100svh - 61px)}.table{height:calc(100svh - 69px);min-height:0!important;margin:4px;border-radius:24px}.boards{inset:12px 10px 8px;grid-template-rows:165px 1fr 170px;gap:7px}.board{width:83%;padding:4px;border-width:3px}.board.bottom{width:70%}.row{margin:2px 0}.cell,.cell.mark{height:24px!important;font-size:16px!important}.row-score,.row-lock{height:24px;font-size:12px}.row-lock img{width:13px;height:13px}.board-foot{min-height:28px;padding-top:2px}.seat.under-left{top:178px!important}.seat.under-right{top:178px!important}.seat.beside-bottom{bottom:22px!important;left:max(12px,calc(15% - 130px))!important;right:auto!important}.roll{width:370px!important;min-height:195px!important;padding:14px!important}.roll h2{margin-bottom:8px}.roll .die{width:46px;height:46px;padding:7px}.roll .dice{gap:12px}}
     @media (max-width:700px) and (orientation:portrait){html,body{overflow:hidden}body>*{visibility:hidden}body::after{content:'Turn your phone sideways to play Qwixx';visibility:visible;position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:36px;background:#07050a;color:#ffeca4;text-align:center;font:900 26px Georgia,serif}}
@@ -53,7 +54,7 @@
     if (state.phase==='playing'&&state.stage==='shared'&&!state.sharedDone[state.you]) $('.seat.s'+state.you)?.insertAdjacentHTML('beforeend','<button class="seat-done" id="seatDone">Done</button>');
     const title=state.phase==='waiting'?'Dice will roll here':`${names[state.turn]}'s roll`;
     const nextRoll=state.phase==='playing'&&state.stage==='awaitingRoll'&&state.turn===state.you;
-    const rollSignature = state.dice ? String(state.rollId ?? JSON.stringify(state.dice)) : '';
+    const rollSignature = state.dice ? `${state.gameNumber}:${state.rollId}` : '';
     const newRoll = rollSignature !== lastRollSignature;
     lastRollSignature = rollSignature;
     const canReroll = state.phase==='playing' && state.stage==='shared' && state.turn===state.you && !state.sharedUsed[state.you] && !state.sharedDone[state.you] && state.dice?.white?.length===3 && (state.cyclingDie !== null || new Set(state.dice.white).size===1);
@@ -65,8 +66,13 @@
         white: arrangeDice(state.diceLayout?.white, state.dice.white.map((_, index) => ({ index }))).map(entry => ({ ...entry, value: state.dice.white[entry.index], color: 'white', rerollIndex: canReroll && (state.cyclingDie === null || state.cyclingDie === entry.index) ? entry.index : null })),
         colors: arrangeDice(state.diceLayout?.colors, colors.filter(color => !state.locked[color] && state.dice[color] !== undefined).map(color => ({ color }))).map(entry => ({ ...entry, value: state.dice[entry.color] }))
       };
+    } else if (state.dice) {
+      diceLayout = {
+        white: diceLayout.white.map(entry => ({ ...entry, value: state.dice.white[entry.index], color: 'white', rerollIndex: canReroll && (state.cyclingDie === null || state.cyclingDie === entry.index) ? entry.index : null })),
+        colors: diceLayout.colors.map(entry => ({ ...entry, value: state.dice[entry.color] }))
+      };
     }
-    $('#roll').innerHTML=`<h2>${title}</h2>${state.dice?`<div class="dice ${newRoll?'new-roll':''}"><div class="dice-row white-dice">${diceLayout.white.map(die).join('')}</div><div class="dice-row color-dice">${diceLayout.colors.map(die).join('')}</div></div>`:''}${nextRoll?'<button class="done" id="nextRoll">Next roll</button>':''}`;
+    $('#roll').innerHTML=`<h2>${title}</h2>${state.dice?`<div class="dice ${newRoll?'new-roll':''}"><div class="dice-row white-dice">${diceLayout.white.map(die).join('')}</div><div class="dice-row color-dice">${diceLayout.colors.map(die).join('')}</div></div>`:''}${state.rescueEligible?'<button class="done" id="rescueRoll">Reroll</button>':''}${nextRoll?'<button class="done" id="nextRoll">Next roll</button>':''}`;
     $('#boards').innerHTML=boardOrder().map((s,index)=>{
       const sheet=state.sheets[s.seat], mine=s.seat===state.you, pos=mine?'bottom':index===0?'top-left':'top-right';
       return `<section class="board ${pos} ${mine?'you':''}"><div class="board-head"><span>${s.name}</span><span>${state.phase==='gameover'?`${s.score} points`:''}</span></div>${colors.map(color=>`<div class="row ${color}"><i></i>${vals(color).map((value,i)=>`<button class="cell ${sheet.marks[color].includes(i)?'mark':''} ${mine?'live':''}" data-color="${color}" data-index="${i}" data-value="${value}" ${mine&&!sheet.marks[color].includes(i)&&!state.locked[color]?'':'disabled'}>${sheet.marks[color].includes(i)?'✕':value}</button>`).join('')}</div>`).join('')}<div class="board-foot"><span>${state.phase==='gameover'?`Score: ${s.score}`:'Penalties: '+sheet.penalties+'/4'}</span>${mine&&s.seat===state.turn&&state.phase==='playing'?`<button class="pass" data-pass="${state.stage}">${state.stage==='shared'?'Use color':'−5 penalty'}</button>`:''}</div></section>`;
@@ -98,9 +104,11 @@
     });
     $('#seatDone')?.addEventListener('click',()=>act({action:'done'}));
     $('#nextRoll')?.addEventListener('click',()=>act({action:'nextRoll'}));
+    $('#rescueRoll')?.addEventListener('click',()=>act({action:'firstTurnReroll'}));
     document.querySelectorAll('[data-reroll]').forEach(die => die.addEventListener('click',()=>act({action:'reroll',index:Number(die.dataset.reroll)})));
     document.querySelectorAll('[data-pass]').forEach(button=>button.onclick=()=>act({action:'penalty'}));
     document.querySelectorAll('[name="count"]').forEach(x=>{x.checked=state.settings.allThree?x.value==='all3':Number(x.value)===state.settings.communityDice;x.disabled=false});
+    $('#firstTurnReroll').checked=state.settings.firstTurnReroll!==false;
     renderLockNotice();
     renderWinner();
   }
@@ -109,7 +117,7 @@
     if (!notice || notice.id === shownLockNotice) return;
     shownLockNotice = notice.id;
     document.querySelector('#lockNotice')?.remove();
-    $('.table').insertAdjacentHTML('beforeend', `<aside class="lock-notice" id="lockNotice"><strong>ROW CLOSED</strong><span>${notice.text}</span></aside>`);
+    $('.table').insertAdjacentHTML('beforeend', `<aside class="lock-notice ${notice.color || ''}" id="lockNotice"><strong>ROW CLOSED</strong><span>${notice.text}</span></aside>`);
     setTimeout(() => document.querySelector('#lockNotice')?.remove(), 5000);
   }
   function renderWinner() {
@@ -151,7 +159,7 @@
   async function join(name){try{const x=await api('/api/join',{name});token=x.token;localStorage.setItem('juddQwixxToken',token);state=x.state;$('#modal').classList.add('hide');render()}catch(e){say(e.message)}}
   $('#players').innerHTML=names.map(n=>`<button>${n}</button>`).join(''); document.querySelectorAll('#players button').forEach((b,i)=>b.onclick=()=>join(names[i]));
   $('#start').onclick=()=>act({action:state?.phase==='waiting'?'start':'newGame'});
-  $('#settingsButton').onclick=()=>$('#settings').classList.toggle('hide'); document.querySelectorAll('[name="count"]').forEach(x=>x.onchange=async()=>{await act({action:'settings',mode:x.value});$('#settings').classList.add('hide')});
+  $('#settingsButton').onclick=()=>$('#settings').classList.toggle('hide'); document.querySelectorAll('[name="count"]').forEach(x=>x.onchange=async()=>{await act({action:'settings',mode:x.value});$('#settings').classList.add('hide')}); $('#firstTurnReroll').onchange=async()=>{await act({action:'settings',firstTurnReroll:$('#firstTurnReroll').checked});$('#settings').classList.add('hide')};
   const gameNight=new URLSearchParams(location.hash.slice(1)).get('gameNight')||'https://judd-game-night.onrender.com/'; $('#return').onclick=()=>location.assign(gameNight);
   load(); setInterval(()=>token&&load(),1500);
 })();
