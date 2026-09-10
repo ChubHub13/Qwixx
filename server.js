@@ -17,7 +17,7 @@ const rowValues = color => ASCENDING.has(color)
   : [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
 const blankSheet = () => ({ marks: Object.fromEntries(COLORS.map(c => [c, []])), locks: Object.fromEntries(COLORS.map(c => [c, false])), penalties: 0 });
 const newGame = () => ({
-  phase: 'waiting', turn: 0, stage: 'shared', round: 0, rollId: 0, dice: null, diceLayout: { white: [], colors: [] },
+  phase: 'waiting', turn: 0, rollingSeat: 0, stage: 'shared', round: 0, rollId: 0, dice: null, diceLayout: { white: [], colors: [] },
   settings: { communityDice: 3, allThree: true, firstTurnReroll: true }, locked: Object.fromEntries(COLORS.map(c => [c, false])),
   sheets: [blankSheet(), blankSheet(), blankSheet()], highlights: [[], [], []], sharedUsed: [false, false, false], sharedDone: [false, false, false], colorUsed: false, rerolled: false, cyclingDie: null, actions: [[], [], []], lockNotice: null, closingColors: [], turnsTaken: [0, 0, 0], rescueUsed: [false, false, false], rollBaseSheets: null, botTurnResolved: false,
   prompt: 'Choose a player to join the table. The game can start when one player is seated.'
@@ -55,7 +55,7 @@ function score(sheet) {
 function takeWhite(seat) { game.sheets[seat].penalties = Math.min(4, game.sheets[seat].penalties + 1); }
 function snapshot(you) {
   return {
-    phase: game.phase, turn: game.turn, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
+    phase: game.phase, turn: game.turn, rollingSeat: game.rollingSeat, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, lockNotice: game.lockNotice, rescueEligible: rescueEligible(you), gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
@@ -90,7 +90,11 @@ function addMark(seat, color, value) {
   if (index === 10) {
     if (!game.closingColors.includes(color)) game.closingColors.push(color);
     game.sheets[seat].locks[color] = true;
-    game.prompt = `${NAMES[seat]} is eligible to lock the ${color} row.`;
+    const closers = game.sheets.map((sheet, player) => sheet.locks[color] ? NAMES[player] : null).filter(Boolean);
+    // Show the closing notice immediately, while other players may still make
+    // their legal selections on this roll.  The row is finalized after all are done.
+    game.lockNotice = { id: `${gameNumber}-${game.rollId}-${color}`, text: `${closers.join(' and ')} closed ${color}`, color };
+    game.prompt = `${NAMES[seat]} closed the ${color} row.`;
   }
   return true;
 }
@@ -255,17 +259,10 @@ function checkForEnd() {
   return false;
 }
 function finalizeSharedLocks() {
-  const closed = [];
   for (const color of COLORS) {
     if (!game.locked[color] && game.sheets.some(sheet => sheet.locks[color])) {
-      const closers = game.sheets.map((sheet, seat) => sheet.locks[color] ? NAMES[seat] : null).filter(Boolean);
       game.locked[color] = true;
-      closed.push({ color, closers });
     }
-  }
-  if (closed.length) {
-    const text = closed.map(({ color, closers }) => `${closers.join(' and ')} closed ${color}`).join(' · ');
-    game.lockNotice = { id: `${gameNumber}-${game.rollId}-${closed[0].color}`, text, color: closed[0].color };
   }
 }
 function advanceSharedIfReady(lastDoneSeat) {
@@ -309,6 +306,9 @@ function settleShared(lastDoneSeat) {
   advanceSharedIfReady(lastDoneSeat);
 }
 function roll(countAsTurn = true) {
+  // The display changes only when this player actually rolls, not when the
+  // previous turn merely finishes and awaits their roll button.
+  game.rollingSeat = game.turn;
   if (countAsTurn) game.turnsTaken[game.turn]++;
   game.round++;
   game.rollId++;
@@ -432,10 +432,14 @@ const server = http.createServer((req, res) => {
       if (game.stage !== 'shared') return fail(res, 'The shared step has ended.');
       if (game.sharedUsed[seat]) return fail(res, 'You already used your shared action this round.');
       if (game.sharedDone[seat]) return fail(res, 'You already finished this turn.');
-      if (seat !== game.turn && !game.sharedDone[game.turn] && !game.closingColors.length && !game.colorUsed && hasAnyClosingChoice(game.turn)) {
+      const option = communityOptions().find(item => item.key === body.option);
+      // The roller retains first choice only for a closing mark. Other players
+      // are free to make any ordinary legal mark while that choice is pending.
+      const requestedColor = String(body.color || '');
+      const requestedIndex = rowValues(requestedColor).indexOf(option?.total);
+      if (seat !== game.turn && requestedIndex === 10 && !game.sharedDone[game.turn] && !game.closingColors.length && !game.colorUsed && hasAnyClosingChoice(game.turn)) {
         return fail(res, `${NAMES[game.turn]} chooses a closing color first.`);
       }
-      const option = communityOptions().find(item => item.key === body.option);
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
       game.actions[seat].push({ kind: option.key === 'all-three' ? 'all-three' : 'shared', color: body.color, index: rowValues(body.color).indexOf(option.total) });

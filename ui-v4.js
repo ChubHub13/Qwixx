@@ -42,7 +42,8 @@
   function render() {
     if (!state) return;
     $('#round').textContent=`Game ${state.gameNumber}`;
-    $('#roundHint').textContent=state.phase==='waiting'?'One player can start the game.':`${names[state.turn]}'s roll`;
+    const rollingName=names[state.rollingSeat ?? state.turn];
+    $('#roundHint').textContent=state.phase==='waiting'?'One player can start the game.':`${rollingName}'s roll`;
     $('.score-title').textContent='GAMES WON';
     $('#people').innerHTML=state.seats.map(s=>`<div class="person"><span>${s.name}<small>${s.live?'Live':'Bot'}</small></span><b>${s.wins}</b></div>`).join('');
     $('#start').disabled=state.phase==='waiting'&&!state.seats.some(s=>s.live);
@@ -53,7 +54,7 @@
       chip?.classList.add(seat.seat === state.you ? 'beside-bottom' : index === 0 ? 'under-left' : 'under-right');
     });
     if (state.phase==='playing'&&state.stage==='shared'&&!state.sharedDone[state.you]) $('.seat.s'+state.you)?.insertAdjacentHTML('beforeend','<button class="seat-done" id="seatDone">Done</button>');
-    const title=state.phase==='waiting'?'Dice will roll here':`${names[state.turn]}'s roll`;
+    const title=state.phase==='waiting'?'Dice will roll here':`${rollingName}'s roll`;
     const nextRoll=state.phase==='playing'&&state.stage==='awaitingRoll'&&state.turn===state.you;
     const rollSignature = state.dice ? `${state.gameNumber}:${state.rollId}` : '';
     const newRoll = rollSignature !== lastRollSignature;
