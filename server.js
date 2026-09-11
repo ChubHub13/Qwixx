@@ -392,7 +392,7 @@ const server = http.createServer((req, res) => {
     const requestedSeat = NAMES.indexOf(requestedName);
     if (requestedSeat < 0) return fail(res, 'Choose Daryl, Cristi, or Cindy.');
     let seat = requestedSeat;
-    let name = NAMES[seat];
+    let name = cleanDisplayName(body.displayName) || NAMES[seat];
     if (currentSeat !== undefined) {
       const current = seats.get(currentSeat);
       if (currentSeat !== requestedSeat) return fail(res, 'Choose your saved player again.');
