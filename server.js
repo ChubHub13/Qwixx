@@ -8,6 +8,7 @@ const NAMES = ['Daryl', 'Cristi', 'Cindy'];
 const COLORS = ['red', 'yellow', 'green', 'blue'];
 const ASCENDING = new Set(['red', 'yellow']);
 const seats = new Map();
+const seatNames = [...NAMES];
 let botTimer;
 let gameNumber = 1;
 const wins = [0, 0, 0];
@@ -45,6 +46,8 @@ function rollLayout() {
 function requiredToClose() { return game.settings.communityDice === 2 ? 5 : 7; }
 function seatForToken(token) { for (const [seat, data] of seats) if (data.token === token) return seat; return undefined; }
 function isLive(seat) { return seats.has(seat); }
+function displayName(seat) { return seatNames[seat] || NAMES[seat] || 'Player'; }
+function cleanDisplayName(value) { const name = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 20); return name || null; }
 function score(sheet) {
   const points = COLORS.reduce((sum, color) => {
     const n = sheet.marks[color].length + (sheet.locks[color] ? 1 : 0);
@@ -58,7 +61,7 @@ function snapshot(you) {
     phase: game.phase, turn: game.turn, rollingSeat: game.rollingSeat, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, lockNotice: game.lockNotice, rescueEligible: rescueEligible(you), gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
-    seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
+    seats: NAMES.map((name, seat) => ({ name: displayName(seat), seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
   };
 }
 function send(res, data, status = 200) {
@@ -90,11 +93,11 @@ function addMark(seat, color, value) {
   if (index === 10) {
     if (!game.closingColors.includes(color)) game.closingColors.push(color);
     game.sheets[seat].locks[color] = true;
-    const closers = game.sheets.map((sheet, player) => sheet.locks[color] ? NAMES[player] : null).filter(Boolean);
+    const closers = game.sheets.map((sheet, player) => sheet.locks[color] ? displayName(player) : null).filter(Boolean);
     // Show the closing notice immediately, while other players may still make
     // their legal selections on this roll.  The row is finalized after all are done.
     game.lockNotice = { id: `${gameNumber}-${game.rollId}-${color}`, text: `${closers.join(' and ')} closed ${color}`, color };
-    game.prompt = `${NAMES[seat]} closed the ${color} row.`;
+    game.prompt = `${displayName(seat)} closed the ${color} row.`;
   }
   return true;
 }
@@ -119,7 +122,7 @@ function undoMark(seat, color, index) {
   // current-roll actions so a reverted move always opens that choice again.
   game.sharedUsed[seat] = actions.some(item => item.kind === 'shared' || item.kind === 'all-three');
   if (seat === game.turn) game.colorUsed = actions.some(item => item.kind === 'color' || item.kind === 'all-three');
-  game.prompt = `${NAMES[seat]} took back a mark.`;
+  game.prompt = `${displayName(seat)} took back a mark.`;
   return true;
 }
 function communityOptions() {
@@ -273,7 +276,7 @@ function advanceSharedIfReady(lastDoneSeat) {
   const nextSeat = (game.turn + 1) % NAMES.length;
   game.turn = nextSeat;
   game.stage = 'awaitingRoll';
-  game.prompt = `${NAMES[game.turn]} may roll next.`;
+  game.prompt = `${displayName(game.turn)} may roll next.`;
   if (lastDoneSeat === nextSeat && isLive(nextSeat)) return roll();
   if (!isLive(game.turn)) {
     clearTimeout(botTimer);
@@ -330,7 +333,7 @@ function roll(countAsTurn = true) {
   game.rerolled = false;
   game.cyclingDie = null;
   game.rollBaseSheets = cloneSheets(game.sheets);
-  game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
+  game.prompt = `${displayName(game.turn)} rolled the community dice.`;
   settleShared();
 }
 function nextTurn() {
@@ -345,7 +348,7 @@ function scheduleBot() {
     if (game.phase !== 'playing' || isLive(game.turn)) return;
     if (game.stage === 'shared') {
       game.stage = 'color';
-      game.prompt = `${NAMES[game.turn]} is using a colored die.`;
+      game.prompt = `${displayName(game.turn)} is using a colored die.`;
       return scheduleBot();
     }
     botColor(game.turn);
@@ -384,12 +387,23 @@ function finishColorAction() {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/api/join' && req.method === 'POST') return readJson(req, body => {
-    const seat = NAMES.indexOf(String(body.name || ''));
-    if (seat < 0) return fail(res, 'Choose one of the listed players.');
+    const requestedName = String(body.name || '');
+    const currentSeat = seatForToken(body.token);
+    const requestedSeat = NAMES.indexOf(requestedName);
+    if (requestedSeat < 0) return fail(res, 'Choose Daryl, Cristi, or Cindy.');
+    let seat = requestedSeat;
+    let name = NAMES[seat];
+    if (currentSeat !== undefined) {
+      const current = seats.get(currentSeat);
+      if (currentSeat !== requestedSeat) return fail(res, 'Choose your saved player again.');
+      seat = currentSeat;
+      name = current.name;
+    }
     const prior = seats.get(seat);
-    if (prior && prior.token !== body.token) return fail(res, `${NAMES[seat]} is already playing on another device.`);
+    if (prior && prior.token !== body.token) return fail(res, `${displayName(seat)} is already playing on another device.`);
     const token = prior?.token || crypto.randomBytes(18).toString('hex');
-    seats.set(seat, { token });
+    seats.set(seat, { token, name });
+    seatNames[seat] = name;
     send(res, { token, state: snapshot(seat) });
   });
   if (url.pathname === '/api/leave' && req.method === 'POST') return readJson(req, body => {
@@ -407,17 +421,24 @@ const server = http.createServer((req, res) => {
     const seat = seatForToken(body.token);
     if (seat === undefined) return fail(res, 'Choose a player first.', 401);
     const action = body.action;
+    if (action === 'rename') {
+      const name = cleanDisplayName(body.name);
+      if (!name) return fail(res, 'Enter a name for this game.');
+      seats.get(seat).name = name;
+      seatNames[seat] = name;
+      return send(res, { state: snapshot(seat) });
+    }
     if (action === 'settings') {
       if (Object.prototype.hasOwnProperty.call(body, 'firstTurnReroll')) {
         game.settings.firstTurnReroll = Boolean(body.firstTurnReroll);
-        game.prompt = `${NAMES[seat]} changed the first-turn reroll setting.`;
+        game.prompt = `${displayName(seat)} changed the first-turn reroll setting.`;
         return send(res, { state: snapshot(seat) });
       }
       const mode = String(body.mode || body.communityDice || '3');
       if (!['2', '3', 'all3'].includes(mode)) return fail(res, 'Choose a white-dice setting.');
       game.settings.communityDice = mode === '2' ? 2 : 3;
       game.settings.allThree = mode === 'all3';
-      game.prompt = `${NAMES[seat]} changed the white-dice setting.`;
+      game.prompt = `${displayName(seat)} changed the white-dice setting.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'start') {
@@ -438,7 +459,7 @@ const server = http.createServer((req, res) => {
       const requestedColor = String(body.color || '');
       const requestedIndex = rowValues(requestedColor).indexOf(option?.total);
       if (seat !== game.turn && requestedIndex === 10 && !game.sharedDone[game.turn] && !game.closingColors.length && !game.colorUsed && hasAnyClosingChoice(game.turn)) {
-        return fail(res, `${NAMES[game.turn]} chooses a closing color first.`);
+        return fail(res, `${displayName(game.turn)} chooses a closing color first.`);
       }
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
@@ -485,7 +506,7 @@ const server = http.createServer((req, res) => {
       game.dice.white[index] = game.dice.white[index] === 6 ? 1 : game.dice.white[index] + 1;
       game.rerolled = true;
       game.cyclingDie = index;
-      game.prompt = `${NAMES[seat]} is choosing a value for one white die.`;
+      game.prompt = `${displayName(seat)} is choosing a value for one white die.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'firstTurnReroll') {
@@ -517,7 +538,7 @@ const server = http.createServer((req, res) => {
       takeWhite(seat);
       game.colorUsed = true;
       game.sharedDone[seat] = true;
-      game.prompt = `${NAMES[seat]} took a −5 penalty.`;
+      game.prompt = `${displayName(seat)} took a −5 penalty.`;
       settleShared(seat);
       return send(res, { state: snapshot(seat) });
     }
