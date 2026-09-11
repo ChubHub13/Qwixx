@@ -355,6 +355,21 @@ function scheduleBot() {
     nextTurn();
   }, 1000);
 }
+function recoverBotTurn() {
+  if (game.phase !== 'playing' || isLive(game.turn)) return;
+  if (game.stage === 'awaitingRoll') {
+    roll();
+    return;
+  }
+  if (game.stage === 'shared') {
+    settleShared();
+    return;
+  }
+  if (game.stage === 'color') {
+    botColor(game.turn);
+    nextTurn();
+  }
+}
 function start(isNewGame = false) {
   clearTimeout(botTimer);
   const oldSettings = game.settings;
@@ -414,7 +429,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/state') {
     const seat = seatForToken(url.searchParams.get('token'));
     if (seat === undefined) return fail(res, 'Choose a player first.', 401);
-    if (game.phase === 'playing' && game.stage === 'awaitingRoll' && !isLive(game.turn)) roll();
+    recoverBotTurn();
     return send(res, { state: snapshot(seat) });
   }
   if (url.pathname === '/api/action' && req.method === 'POST') return readJson(req, body => {
