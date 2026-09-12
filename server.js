@@ -4,7 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT || 10000);
-const NAMES = ['Daryl', 'Cristi', 'Cindy'];
+let playerNames = ['Daryl', 'Cristi', 'Cindy'];
 const COLORS = ['red', 'yellow', 'green', 'blue'];
 const ASCENDING = new Set(['red', 'yellow']);
 const seats = new Map();
@@ -19,7 +19,7 @@ function loadScoreHistory() {
   try {
     const entries = JSON.parse(fs.readFileSync(SCORE_HISTORY_FILE, 'utf8'));
     return Array.isArray(entries) ? entries.filter(entry =>
-      NAMES.includes(entry?.name) && Number.isFinite(entry?.score)
+      typeof entry?.name === 'string' && entry.name.trim() && Number.isFinite(entry?.score)
     ).map(entry => ({ ...entry, bot: Boolean(entry.bot) })) : [];
   } catch {
     return [];
@@ -37,7 +37,7 @@ function saveScoreHistory() {
 function recordScores(scores) {
   const playedAt = new Date().toISOString();
   scoreHistory.push(...scores.map((score, seat) => ({
-    name: NAMES[seat], score, bot: !isLive(seat), playedAt
+    name: playerNames[seat], score, bot: !isLive(seat), playedAt
   })));
   // Keep the file small while retaining far more than the visible top/bottom five.
   scoreHistory = scoreHistory.slice(-1000);
@@ -97,7 +97,7 @@ function snapshot(you) {
     phase: game.phase, turn: game.turn, rollingSeat: game.rollingSeat, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, lockNotice: game.lockNotice, rescueEligible: rescueEligible(you), gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
-    seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] })),
+    seats: playerNames.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] })),
     allTime: { high: allTimeScores('high'), low: allTimeScores('low') }
   };
 }
@@ -130,11 +130,11 @@ function addMark(seat, color, value) {
   if (index === 10) {
     if (!game.closingColors.includes(color)) game.closingColors.push(color);
     game.sheets[seat].locks[color] = true;
-    const closers = game.sheets.map((sheet, player) => sheet.locks[color] ? NAMES[player] : null).filter(Boolean);
+    const closers = game.sheets.map((sheet, player) => sheet.locks[color] ? playerNames[player] : null).filter(Boolean);
     // Show the closing notice immediately, while other players may still make
     // their legal selections on this roll.  The row is finalized after all are done.
     game.lockNotice = { id: `${gameNumber}-${game.rollId}-${color}`, text: `${closers.join(' and ')} closed ${color}`, color };
-    game.prompt = `${NAMES[seat]} closed the ${color} row.`;
+    game.prompt = `${playerNames[seat]} closed the ${color} row.`;
   }
   return true;
 }
@@ -159,7 +159,7 @@ function undoMark(seat, color, index) {
   // current-roll actions so a reverted move always opens that choice again.
   game.sharedUsed[seat] = actions.some(item => item.kind === 'shared' || item.kind === 'all-three');
   if (seat === game.turn) game.colorUsed = actions.some(item => item.kind === 'color' || item.kind === 'all-three');
-  game.prompt = `${NAMES[seat]} took back a mark.`;
+  game.prompt = `${playerNames[seat]} took back a mark.`;
   return true;
 }
 function communityOptions() {
@@ -311,10 +311,10 @@ function advanceSharedIfReady(lastDoneSeat) {
   game.highlights = [[], [], []];
   finalizeSharedLocks();
   if (checkForEnd()) return;
-  const nextSeat = (game.turn + 1) % NAMES.length;
+  const nextSeat = (game.turn + 1) % playerNames.length;
   game.turn = nextSeat;
   game.stage = 'awaitingRoll';
-  game.prompt = `${NAMES[game.turn]} may roll next.`;
+  game.prompt = `${playerNames[game.turn]} may roll next.`;
   if (lastDoneSeat === nextSeat && isLive(nextSeat)) return roll();
   if (!isLive(game.turn)) {
     // Do not leave the table appearing frozen while it waits for a bot's
@@ -327,7 +327,7 @@ function advanceSharedIfReady(lastDoneSeat) {
 function resolveBotsForShared() {
   const reserveForLiveRoller = isLive(game.turn) && !game.sharedDone[game.turn] && !game.closingColors.length && !game.colorUsed && (hasAnyClosingChoice(game.turn) || rescueEligible(game.turn));
   let activeBotMoved = false;
-  const order = [game.turn, ...NAMES.map((_, seat) => seat).filter(seat => seat !== game.turn)];
+  const order = [game.turn, ...playerNames.map((_, seat) => seat).filter(seat => seat !== game.turn)];
   for (const seat of order) {
     if (isLive(seat) || game.sharedDone[seat] || reserveForLiveRoller) continue;
     const moved = botShared(seat);
@@ -372,12 +372,12 @@ function roll(countAsTurn = true) {
   game.rerolled = false;
   game.cyclingDie = null;
   game.rollBaseSheets = cloneSheets(game.sheets);
-  game.prompt = `${NAMES[game.turn]} rolled the community dice.`;
+  game.prompt = `${playerNames[game.turn]} rolled the community dice.`;
   settleShared();
 }
 function nextTurn() {
   if (checkForEnd()) return;
-  game.turn = (game.turn + 1) % NAMES.length;
+  game.turn = (game.turn + 1) % playerNames.length;
   roll();
 }
 function scheduleBot() {
@@ -387,7 +387,7 @@ function scheduleBot() {
     if (game.phase !== 'playing' || isLive(game.turn)) return;
     if (game.stage === 'shared') {
       game.stage = 'color';
-      game.prompt = `${NAMES[game.turn]} is using a colored die.`;
+      game.prompt = `${playerNames[game.turn]} is using a colored die.`;
       return scheduleBot();
     }
     botColor(game.turn);
@@ -401,7 +401,7 @@ function start(isNewGame = false) {
   const firstGame = !isNewGame && game.phase === 'waiting' && gameNumber === 1;
   let firstSeat;
   if (firstGame) {
-    firstSeat = crypto.randomInt(NAMES.length);
+    firstSeat = crypto.randomInt(playerNames.length);
   } else {
     const lowestScore = Math.min(...oldScores);
     const eligible = oldScores.map((value, seat) => ({ value, seat })).filter(item => item.value === lowestScore);
@@ -425,11 +425,23 @@ function finishColorAction() {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/api/lobby') {
+    return send(res, { names: playerNames, seats: playerNames.map((name, seat) => ({ name, seat, live: isLive(seat) })) });
+  }
   if (url.pathname === '/api/join' && req.method === 'POST') return readJson(req, body => {
-    const seat = NAMES.indexOf(String(body.name || ''));
+    const requestedSeat = Number(body.seat);
+    const seat = Number.isInteger(requestedSeat) && requestedSeat >= 0 && requestedSeat < playerNames.length
+      ? requestedSeat
+      : playerNames.indexOf(String(body.name || ''));
     if (seat < 0) return fail(res, 'Choose one of the listed players.');
     const prior = seats.get(seat);
-    if (prior && prior.token !== body.token) return fail(res, `${NAMES[seat]} is already playing on another device.`);
+    if (prior && prior.token !== body.token) return fail(res, `${playerNames[seat]} is already playing on another device.`);
+    const requestedName = String(body.name || playerNames[seat]).trim().replace(/\s+/g, ' ').slice(0, 24);
+    if (!requestedName) return fail(res, 'Enter a player name.');
+    if (playerNames.some((name, index) => index !== seat && name.toLocaleLowerCase() === requestedName.toLocaleLowerCase())) {
+      return fail(res, 'Each player needs a different name.');
+    }
+    playerNames[seat] = requestedName;
     const token = prior?.token || crypto.randomBytes(18).toString('hex');
     seats.set(seat, { token });
     send(res, { token, state: snapshot(seat) });
@@ -452,20 +464,20 @@ const server = http.createServer((req, res) => {
     if (action === 'resetScores') {
       scoreHistory = [];
       saveScoreHistory();
-      game.prompt = `${NAMES[seat]} cleared the all-time score board.`;
+      game.prompt = `${playerNames[seat]} cleared the all-time score board.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'settings') {
       if (Object.prototype.hasOwnProperty.call(body, 'firstTurnReroll')) {
         game.settings.firstTurnReroll = Boolean(body.firstTurnReroll);
-        game.prompt = `${NAMES[seat]} changed the first-turn reroll setting.`;
+        game.prompt = `${playerNames[seat]} changed the first-turn reroll setting.`;
         return send(res, { state: snapshot(seat) });
       }
       const mode = String(body.mode || body.communityDice || '3');
       if (!['2', '3', 'all3'].includes(mode)) return fail(res, 'Choose a white-dice setting.');
       game.settings.communityDice = mode === '2' ? 2 : 3;
       game.settings.allThree = mode === 'all3';
-      game.prompt = `${NAMES[seat]} changed the white-dice setting.`;
+      game.prompt = `${playerNames[seat]} changed the white-dice setting.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'start') {
@@ -486,7 +498,7 @@ const server = http.createServer((req, res) => {
       const requestedColor = String(body.color || '');
       const requestedIndex = rowValues(requestedColor).indexOf(option?.total);
       if (seat !== game.turn && requestedIndex === 10 && !game.sharedDone[game.turn] && !game.closingColors.length && !game.colorUsed && hasAnyClosingChoice(game.turn)) {
-        return fail(res, `${NAMES[game.turn]} chooses a closing color first.`);
+        return fail(res, `${playerNames[game.turn]} chooses a closing color first.`);
       }
       if (!option || !addMark(seat, body.color, option.total)) return fail(res, 'That box is not available.');
       game.sharedUsed[seat] = true;
@@ -533,7 +545,7 @@ const server = http.createServer((req, res) => {
       game.dice.white[index] = game.dice.white[index] === 6 ? 1 : game.dice.white[index] + 1;
       game.rerolled = true;
       game.cyclingDie = index;
-      game.prompt = `${NAMES[seat]} is choosing a value for one white die.`;
+      game.prompt = `${playerNames[seat]} is choosing a value for one white die.`;
       return send(res, { state: snapshot(seat) });
     }
     if (action === 'firstTurnReroll') {
@@ -565,7 +577,7 @@ const server = http.createServer((req, res) => {
       takeWhite(seat);
       game.colorUsed = true;
       game.sharedDone[seat] = true;
-      game.prompt = `${NAMES[seat]} took a −5 penalty.`;
+      game.prompt = `${playerNames[seat]} took a −5 penalty.`;
       settleShared(seat);
       return send(res, { state: snapshot(seat) });
     }

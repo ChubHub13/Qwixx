@@ -1,7 +1,7 @@
 (() => {
-  const names = ['Daryl', 'Cristi', 'Cindy'];
+  const defaultNames = ['Daryl', 'Cristi', 'Cindy'];
   const colors = ['red', 'yellow', 'green', 'blue'];
-  const avatars = { Daryl: '/daryl-avatar.png', Cristi: '/cristi-avatar.png', Cindy: '/cindy-avatar.png' };
+  const avatars = ['/daryl-avatar.png', '/cristi-avatar.png', '/cindy-avatar.png'];
   const up = new Set(['red', 'yellow']);
   const vals = color => up.has(color) ? [2,3,4,5,6,7,8,9,10,11,12] : [12,11,10,9,8,7,6,5,4,3,2];
   let token = localStorage.getItem('juddQwixxToken') || '';
@@ -10,6 +10,7 @@
   let diceLayout = { white: [], colors: [] };
   let shownLockNotice = '';
   let scoreTab = 'high';
+  let lobbyNames = [...defaultNames];
 
   document.body.innerHTML = `<style>
     :root{--gold:#f6d66d;--purple:#260d31;--line:#59305f;--red:#a41e2a;--yellow:#a8880e;--green:#16734f;--blue:#245ea5}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 58% 42%,#176051 0,#071615 54%,#06030a 100%);color:#faebd2;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}button{font:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}.top{height:61px;background:#08040c;border-bottom:1px solid #503053;display:flex;align-items:center;padding:8px 15px;gap:11px}.mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#351443;border:1px solid #72447b;color:var(--gold);font-size:24px}.title{font:900 30px Georgia,serif;color:#fff0b9;text-shadow:1px 2px #956039}.title small{font:italic 11px system-ui;color:#cbb8a1;display:block;text-shadow:none}.spacer{flex:1}.settings,.return{border:1px solid #77517e;border-radius:11px;background:#26112d;color:#fff0cf;padding:8px 12px;font-weight:800}.shell{display:grid;grid-template-columns:217px 1fr;min-height:calc(100vh - 61px)}.side{padding:7px 5px;background:linear-gradient(180deg,#110714,#210b29);border-right:2px solid #34133c}.panel{padding:13px;border:1px solid #513052;border-radius:17px;background:#100914;margin-bottom:9px}.round{text-align:center}.eyebrow{font-size:10px;letter-spacing:1px;font-weight:900;color:#c7b19e}.round b{display:block;font:900 27px Georgia,serif;color:#ffe89a}.round span{font-size:11px;color:#c9b7bd}.score-title{margin:0 0 9px;font-size:10px;letter-spacing:1px;color:#c7b19e}.person{display:flex;justify-content:space-between;padding:8px 1px;font-size:13px;font-weight:900}.person small{display:block;font-size:10px;color:#b99fb2}.side-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.side-actions button{padding:11px 5px;border-radius:11px;border:1px solid #714277;background:#3a1949;color:#fff2d4;font-weight:900}.side-actions #start{background:#933447;border-color:#ba5d6b}.table{position:relative;margin:5px;border:4px solid #2b102f;border-radius:32px;min-height:765px;overflow:hidden;background:repeating-linear-gradient(115deg,#075044 0,#075044 2px,#06433a 2px,#06433a 5px)}.roll{position:absolute;left:50%;top:50%;z-index:3;transform:translate(-50%,-50%);width:310px;min-height:150px;padding:16px;border-radius:18px;background:#073a34e8;border:1px solid #227061;text-align:center;box-shadow:0 9px 28px #001a16cc}.roll h2{margin:0 0 13px;font:900 20px Georgia,serif;color:#ffea9d}.dice{display:flex;justify-content:center;gap:11px;flex-wrap:wrap}.die{width:53px;height:53px;padding:8px;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);border-radius:14px;background:#faf7ec;box-shadow:inset -4px -5px #c9c1ad,2px 4px #001a16;transform:rotate(-7deg)}.die:nth-child(2){transform:translateY(-5px) rotate(8deg)}.die:nth-child(3){transform:translateY(3px) rotate(-9deg)}.die.red{background:var(--red)}.die.yellow{background:var(--yellow)}.die.green{background:var(--green)}.die.blue{background:var(--blue)}.pip{width:8px;height:8px;margin:auto;border-radius:50%;background:#20242a}.die:not(.white) .pip{background:#fff}.seats{position:absolute;inset:0;z-index:2;pointer-events:none}.seat{position:absolute;display:flex;gap:8px;align-items:center;padding:7px 10px;border-radius:11px;background:#09070d;border:1px solid #1d1322}.seat i{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#deb44e;color:#1d1607;font-style:normal;font-weight:900}.seat b{font-size:12px;display:block}.seat.s0{top:16px;left:50%;transform:translateX(-50%)}.seat.s1{top:260px;left:16px}.seat.s2{bottom:68px;left:16px}.boards{position:absolute;inset:75px 14px 18px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:225px 1fr 235px;gap:10px;pointer-events:none}.board{pointer-events:auto;width:92%;align-self:start;background:#f7f4e7;border:4px solid #e4e0d0;padding:7px;box-shadow:0 6px 17px #001913b0;color:#fff}.board.top-left{justify-self:start}.board.top-right{justify-self:end}.board.bottom{grid-column:1/3;grid-row:3;width:46%;justify-self:center;align-self:end}.board.you{outline:3px solid var(--gold)}.board-head{display:flex;justify-content:space-between;color:#26251f;font-size:11px;font-weight:900;margin:0 2px 5px}.row{display:grid;grid-template-columns:17px repeat(11,minmax(10px,1fr));gap:2px;margin:3px 0}.row i{height:28px;background:#111;clip-path:polygon(0 0,100% 50%,0 100%)}.cell{height:28px;padding:0;border:1px solid #ffffff44;border-radius:3px;font-size:11px;font-weight:900;color:white}.row.red .cell{background:var(--red)}.row.yellow .cell{background:var(--yellow)}.row.green .cell{background:var(--green)}.row.blue .cell{background:var(--blue)}.cell.mark{background:#191d21!important;color:#fff}.cell.live:hover:not(:disabled){filter:brightness(1.35);outline:2px solid #fff}.board-foot{display:flex;justify-content:space-between;align-items:center;color:#292923;font-size:11px;font-weight:900;padding:5px 2px 0}.pass{border:0;border-radius:6px;background:#35203b;color:#fff;padding:5px 8px;font-size:11px;font-weight:900}.modal{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:18px;background:#020305df}.modal.hide{display:none}.modal-card{width:min(780px,100%);padding:20px 18px 17px;border:1px solid #8d6638;border-radius:18px;background:linear-gradient(#280c32,#160717);box-shadow:0 22px 80px #000;text-align:center}.modal h1{margin:0 0 37px;font:900 30px Georgia,serif;color:#ffeda4}.players{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.players button{padding:22px 8px;border:1px solid #955978;border-radius:13px;background:#41194c;color:#fff0a4;font:900 22px Georgia,serif}.pop{position:fixed;z-index:8;right:17px;top:58px;width:280px;padding:14px;border:1px solid #816047;border-radius:14px;background:#170a1b;box-shadow:0 15px 45px #000}.pop.hide{display:none}.pop h2{margin:0 0 9px;color:#ffeca4;font:900 20px Georgia,serif}.option{display:block;padding:9px;margin:7px 0;border-radius:8px;font-size:13px;font-weight:800}.option:has(input:checked){background:#371743}.return{position:fixed;right:17px;bottom:14px;z-index:7;border-radius:999px}.toast{position:fixed;z-index:20;bottom:64px;left:50%;transform:translateX(-50%);background:#9d3948;color:#fff;padding:10px 14px;border-radius:9px;display:none}.toast.show{display:block}@media(max-width:850px){.shell{grid-template-columns:1fr}.side{display:none}.board{width:100%}.board.bottom{width:68%}.table{min-height:850px}.seat.s1{top:280px}}@media(max-width:580px){.title{font-size:24px}.mark{display:none}.table{min-height:770px}.boards{inset:80px 4px 10px;grid-template-rows:180px 1fr 185px}.board{padding:4px;border-width:2px}.board.bottom{width:77%}.row{grid-template-columns:11px repeat(11,minmax(8px,1fr));gap:1px}.row i,.cell{height:22px}.cell{font-size:8px}.roll{width:280px;padding:11px}.die{width:43px;height:43px;padding:6px}.players{grid-template-columns:1fr}.modal h1{margin-bottom:15px}.seat{display:none}}
@@ -20,7 +21,9 @@
     .cell,.cell.mark{text-shadow:none!important}.cell.mark{height:28px!important;min-width:0!important}.board-foot{min-height:38px}.side-actions{grid-template-columns:1fr}.all-time{padding:8px 9px}.all-time-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px}.all-time-tabs button{padding:6px 2px;border:1px solid #70477a;border-radius:7px;background:#25112d;color:#d7c4a9;font-size:10px;font-weight:900}.all-time-tabs button.active{background:#7e3246;border-color:#c2717e;color:#fff2c2}.all-time-list{margin:7px 1px 0;padding:0;list-style:none;counter-reset:rank}.all-time-list li{counter-increment:rank;display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:3px;padding:3px 0;border-bottom:1px solid #38213e;color:#ffedc1;font-size:11px;font-weight:800}.all-time-list li::before{content:counter(rank) '.';color:#bf9f6d}.all-time-list li.empty{display:block;color:#bba8b1;font-size:10px;font-weight:600;text-align:center;border:0;padding:6px 0}.all-time-list li.empty::before{display:none}.seat-done{margin-left:3px;border:1px solid #a17b43;border-radius:6px;background:#391943;color:#fff1b9;padding:4px 7px;font-size:10px;font-weight:900}.done{display:block;margin:18px auto 0;border:1px solid #9c7b42;border-radius:8px;background:#311a37;color:#fff4c7;padding:9px 28px;font-weight:900}
   </style>`);
   document.head.insertAdjacentHTML('beforeend', '<style>#return{z-index:10000!important;pointer-events:auto!important}</style>');
+  document.head.insertAdjacentHTML('beforeend', '<style>.player-choice{display:grid;grid-template-columns:1fr 42px;gap:6px}.players .edit-player{padding:0!important;border-color:#a6793e!important;background:#291333!important;color:#ffeca4!important;font:900 21px system-ui!important}.players .choose-player{min-width:0}.players .edit-player:hover{filter:brightness(1.2)}</style>');
   const $ = s => document.querySelector(s);
+  const esc = value => String(value).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
   $('#settings').insertAdjacentHTML('beforeend', '<label class="option"><input id="firstTurnReroll" type="checkbox" checked> First-turn reroll if every play skips 3+</label><button class="settings-reset" id="resetScores" type="button">Reset high &amp; low scores</button>');
   document.body.insertAdjacentHTML('beforeend', `<style>
     .cell.recent{outline:3px solid #000!important;outline-offset:-3px}.row-lock{opacity:.2}.row.closable .row-lock,.row.locked .row-lock{opacity:1}.row.locked.red .cell:not(.mark){background:#fff!important;color:var(--red)!important}.row.locked.yellow .cell:not(.mark){background:#fff!important;color:var(--yellow)!important}.row.locked.green .cell:not(.mark){background:#fff!important;color:var(--green)!important}.row.locked.blue .cell:not(.mark){background:#fff!important;color:var(--blue)!important}.row.locked.red .row-lock{background:var(--red)!important}.row.locked.yellow .row-lock{background:var(--yellow)!important}.row.locked.green .row-lock{background:var(--green)!important}.row.locked.blue .row-lock{background:var(--blue)!important}.row.locked .row-lock img{filter:invert(1)}
@@ -42,19 +45,21 @@
   function boardOrder(){ const others=state.seats.filter(s=>s.seat!==state.you); return [...others, state.seats[state.you]]; }
   function render() {
     if (!state) return;
+    lobbyNames = state.seats.map(seat => seat.name);
+    renderPlayerChoices();
     $('#round').textContent=`Game ${state.gameNumber}`;
-    const rollingName=names[state.rollingSeat ?? state.turn];
+    const rollingName=state.seats[state.rollingSeat ?? state.turn]?.name || lobbyNames[state.rollingSeat ?? state.turn];
     $('#roundHint').textContent=state.phase==='waiting'?'One player can start the game.':`${rollingName}'s roll`;
     $('.score-title').textContent='GAMES WON';
-    $('#people').innerHTML=state.seats.map(s=>`<div class="person"><span>${s.name}<small>${s.live?'Live':'Bot'}</small></span><b>${s.wins}</b></div>`).join('');
+    $('#people').innerHTML=state.seats.map(s=>`<div class="person"><span>${esc(s.name)}<small>${s.live?'Live':'Bot'}</small></span><b>${s.wins}</b></div>`).join('');
     $('#start').disabled=state.phase==='waiting'&&!state.seats.some(s=>s.live);
     $('#start').textContent=state.phase==='waiting'?'Start Game':'New Game';
     document.querySelectorAll('[data-score-tab]').forEach(button => button.classList.toggle('active', button.dataset.scoreTab === scoreTab));
     const scores = state.allTime?.[scoreTab] || [];
     $('#allTimeScores').innerHTML = scores.length
-      ? scores.map(entry => `<li><span>${entry.name}${entry.bot ? ' (Bot)' : ''}</span><strong>${entry.score}</strong></li>`).join('')
+      ? scores.map(entry => `<li><span>${esc(entry.name)}${entry.bot ? ' (Bot)' : ''}</span><strong>${entry.score}</strong></li>`).join('')
       : '<li class="empty">No completed games yet</li>';
-    $('#seats').innerHTML=state.seats.map(s=>`<div class="seat s${s.seat}"><img class="avatar" src="${avatars[s.name]}" alt="${s.name}"><b>${s.name}</b></div>`).join('');
+    $('#seats').innerHTML=state.seats.map(s=>`<div class="seat s${s.seat}"><img class="avatar" src="${avatars[s.seat]}" alt="${esc(s.name)}"><b>${esc(s.name)}</b></div>`).join('');
     boardOrder().forEach((seat, index) => {
       const chip = $('.seat.s' + seat.seat);
       chip?.classList.add(seat.seat === state.you ? 'beside-bottom' : index === 0 ? 'under-left' : 'under-right');
@@ -168,9 +173,30 @@
     } catch(e) { say(e.message); load(); }
   }
   async function act(body){try{state=(await api('/api/action',body)).state;render()}catch(e){say(e.message);load()}}
-  async function load(){try{state=(await api(`/api/state?token=${encodeURIComponent(token)}`)).state;$('#modal').classList.add('hide');render()}catch{token='';localStorage.removeItem('juddQwixxToken');$('#modal').classList.remove('hide')}}
-  async function join(name){try{const x=await api('/api/join',{name});token=x.token;localStorage.setItem('juddQwixxToken',token);state=x.state;$('#modal').classList.add('hide');render()}catch(e){say(e.message)}}
-  $('#players').innerHTML=names.map(n=>`<button>${n}</button>`).join(''); document.querySelectorAll('#players button').forEach((b,i)=>b.onclick=()=>join(names[i]));
+  function renderPlayerChoices(){
+    $('#players').innerHTML=lobbyNames.map((name,seat)=>`<div class="player-choice"><button class="choose-player" data-join-seat="${seat}">${esc(name)}</button><button class="edit-player" data-edit-seat="${seat}" aria-label="Edit ${esc(name)}'s name" title="Edit name">✎</button></div>`).join('');
+    document.querySelectorAll('[data-join-seat]').forEach(button=>button.onclick=()=>join(Number(button.dataset.joinSeat)));
+    document.querySelectorAll('[data-edit-seat]').forEach(button=>button.onclick=()=>editPlayerName(Number(button.dataset.editSeat)));
+  }
+  function editPlayerName(seat){
+    const requested=prompt('Enter player name',lobbyNames[seat]);
+    if(requested===null)return;
+    const name=requested.trim().replace(/\s+/g,' ').slice(0,24);
+    if(!name)return say('Enter a player name.');
+    if(lobbyNames.some((other,index)=>index!==seat&&other.toLocaleLowerCase()===name.toLocaleLowerCase()))return say('Each player needs a different name.');
+    lobbyNames[seat]=name;
+    renderPlayerChoices();
+  }
+  async function loadLobby(){
+    try{
+      const response=await fetch('/api/lobby',{cache:'no-store'});
+      const lobby=await response.json();
+      if(response.ok&&Array.isArray(lobby.names)&&lobby.names.length===3){lobbyNames=lobby.names;renderPlayerChoices();}
+    }catch{}
+  }
+  async function load(){try{state=(await api(`/api/state?token=${encodeURIComponent(token)}`)).state;$('#modal').classList.add('hide');render()}catch{token='';localStorage.removeItem('juddQwixxToken');$('#modal').classList.remove('hide');loadLobby()}}
+  async function join(seat){try{const x=await api('/api/join',{seat,name:lobbyNames[seat]});token=x.token;localStorage.setItem('juddQwixxToken',token);state=x.state;$('#modal').classList.add('hide');render()}catch(e){say(e.message)}}
+  renderPlayerChoices();
   $('#start').onclick=()=>act({action:state?.phase==='waiting'?'start':'newGame'});
   document.querySelectorAll('[data-score-tab]').forEach(button=>button.onclick=()=>{scoreTab=button.dataset.scoreTab;render()});
   $('#settingsButton').onclick=()=>$('#settings').classList.toggle('hide'); document.querySelectorAll('[name="count"]').forEach(x=>x.onchange=async()=>{await act({action:'settings',mode:x.value});$('#settings').classList.add('hide')}); $('#firstTurnReroll').onchange=async()=>{await act({action:'settings',firstTurnReroll:$('#firstTurnReroll').checked});$('#settings').classList.add('hide')}; $('#resetScores').onclick=async()=>{if(!confirm('Reset every High Score and Low Score entry? This cannot be undone.'))return;await act({action:'resetScores'});$('#settings').classList.add('hide')};
