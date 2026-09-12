@@ -449,6 +449,12 @@ const server = http.createServer((req, res) => {
     const seat = seatForToken(body.token);
     if (seat === undefined) return fail(res, 'Choose a player first.', 401);
     const action = body.action;
+    if (action === 'resetScores') {
+      scoreHistory = [];
+      saveScoreHistory();
+      game.prompt = `${NAMES[seat]} cleared the all-time score board.`;
+      return send(res, { state: snapshot(seat) });
+    }
     if (action === 'settings') {
       if (Object.prototype.hasOwnProperty.call(body, 'firstTurnReroll')) {
         game.settings.firstTurnReroll = Boolean(body.firstTurnReroll);
