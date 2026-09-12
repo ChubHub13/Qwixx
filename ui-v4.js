@@ -11,6 +11,8 @@
   let shownLockNotice = '';
   let scoreTab = 'high';
   let lobbyNames = [...defaultNames];
+  let stateEpoch = 0;
+  let pollInFlight = false;
 
   document.body.innerHTML = `<style>
     :root{--gold:#f6d66d;--purple:#260d31;--line:#59305f;--red:#a41e2a;--yellow:#a8880e;--green:#16734f;--blue:#245ea5}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 58% 42%,#176051 0,#071615 54%,#06030a 100%);color:#faebd2;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}button{font:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}.top{height:61px;background:#08040c;border-bottom:1px solid #503053;display:flex;align-items:center;padding:8px 15px;gap:11px}.mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#351443;border:1px solid #72447b;color:var(--gold);font-size:24px}.title{font:900 30px Georgia,serif;color:#fff0b9;text-shadow:1px 2px #956039}.title small{font:italic 11px system-ui;color:#cbb8a1;display:block;text-shadow:none}.spacer{flex:1}.settings,.return{border:1px solid #77517e;border-radius:11px;background:#26112d;color:#fff0cf;padding:8px 12px;font-weight:800}.shell{display:grid;grid-template-columns:217px 1fr;min-height:calc(100vh - 61px)}.side{padding:7px 5px;background:linear-gradient(180deg,#110714,#210b29);border-right:2px solid #34133c}.panel{padding:13px;border:1px solid #513052;border-radius:17px;background:#100914;margin-bottom:9px}.round{text-align:center}.eyebrow{font-size:10px;letter-spacing:1px;font-weight:900;color:#c7b19e}.round b{display:block;font:900 27px Georgia,serif;color:#ffe89a}.round span{font-size:11px;color:#c9b7bd}.score-title{margin:0 0 9px;font-size:10px;letter-spacing:1px;color:#c7b19e}.person{display:flex;justify-content:space-between;padding:8px 1px;font-size:13px;font-weight:900}.person small{display:block;font-size:10px;color:#b99fb2}.side-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.side-actions button{padding:11px 5px;border-radius:11px;border:1px solid #714277;background:#3a1949;color:#fff2d4;font-weight:900}.side-actions #start{background:#933447;border-color:#ba5d6b}.table{position:relative;margin:5px;border:4px solid #2b102f;border-radius:32px;min-height:765px;overflow:hidden;background:repeating-linear-gradient(115deg,#075044 0,#075044 2px,#06433a 2px,#06433a 5px)}.roll{position:absolute;left:50%;top:50%;z-index:3;transform:translate(-50%,-50%);width:310px;min-height:150px;padding:16px;border-radius:18px;background:#073a34e8;border:1px solid #227061;text-align:center;box-shadow:0 9px 28px #001a16cc}.roll h2{margin:0 0 13px;font:900 20px Georgia,serif;color:#ffea9d}.dice{display:flex;justify-content:center;gap:11px;flex-wrap:wrap}.die{width:53px;height:53px;padding:8px;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);border-radius:14px;background:#faf7ec;box-shadow:inset -4px -5px #c9c1ad,2px 4px #001a16;transform:rotate(-7deg)}.die:nth-child(2){transform:translateY(-5px) rotate(8deg)}.die:nth-child(3){transform:translateY(3px) rotate(-9deg)}.die.red{background:var(--red)}.die.yellow{background:var(--yellow)}.die.green{background:var(--green)}.die.blue{background:var(--blue)}.pip{width:8px;height:8px;margin:auto;border-radius:50%;background:#20242a}.die:not(.white) .pip{background:#fff}.seats{position:absolute;inset:0;z-index:2;pointer-events:none}.seat{position:absolute;display:flex;gap:8px;align-items:center;padding:7px 10px;border-radius:11px;background:#09070d;border:1px solid #1d1322}.seat i{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#deb44e;color:#1d1607;font-style:normal;font-weight:900}.seat b{font-size:12px;display:block}.seat.s0{top:16px;left:50%;transform:translateX(-50%)}.seat.s1{top:260px;left:16px}.seat.s2{bottom:68px;left:16px}.boards{position:absolute;inset:75px 14px 18px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:225px 1fr 235px;gap:10px;pointer-events:none}.board{pointer-events:auto;width:92%;align-self:start;background:#f7f4e7;border:4px solid #e4e0d0;padding:7px;box-shadow:0 6px 17px #001913b0;color:#fff}.board.top-left{justify-self:start}.board.top-right{justify-self:end}.board.bottom{grid-column:1/3;grid-row:3;width:46%;justify-self:center;align-self:end}.board.you{outline:3px solid var(--gold)}.board-head{display:flex;justify-content:space-between;color:#26251f;font-size:11px;font-weight:900;margin:0 2px 5px}.row{display:grid;grid-template-columns:17px repeat(11,minmax(10px,1fr));gap:2px;margin:3px 0}.row i{height:28px;background:#111;clip-path:polygon(0 0,100% 50%,0 100%)}.cell{height:28px;padding:0;border:1px solid #ffffff44;border-radius:3px;font-size:11px;font-weight:900;color:white}.row.red .cell{background:var(--red)}.row.yellow .cell{background:var(--yellow)}.row.green .cell{background:var(--green)}.row.blue .cell{background:var(--blue)}.cell.mark{background:#191d21!important;color:#fff}.cell.live:hover:not(:disabled){filter:brightness(1.35);outline:2px solid #fff}.board-foot{display:flex;justify-content:space-between;align-items:center;color:#292923;font-size:11px;font-weight:900;padding:5px 2px 0}.pass{border:0;border-radius:6px;background:#35203b;color:#fff;padding:5px 8px;font-size:11px;font-weight:900}.modal{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:18px;background:#020305df}.modal.hide{display:none}.modal-card{width:min(780px,100%);padding:20px 18px 17px;border:1px solid #8d6638;border-radius:18px;background:linear-gradient(#280c32,#160717);box-shadow:0 22px 80px #000;text-align:center}.modal h1{margin:0 0 37px;font:900 30px Georgia,serif;color:#ffeda4}.players{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.players button{padding:22px 8px;border:1px solid #955978;border-radius:13px;background:#41194c;color:#fff0a4;font:900 22px Georgia,serif}.pop{position:fixed;z-index:8;right:17px;top:58px;width:280px;padding:14px;border:1px solid #816047;border-radius:14px;background:#170a1b;box-shadow:0 15px 45px #000}.pop.hide{display:none}.pop h2{margin:0 0 9px;color:#ffeca4;font:900 20px Georgia,serif}.option{display:block;padding:9px;margin:7px 0;border-radius:8px;font-size:13px;font-weight:800}.option:has(input:checked){background:#371743}.return{position:fixed;right:17px;bottom:14px;z-index:7;border-radius:999px}.toast{position:fixed;z-index:20;bottom:64px;left:50%;transform:translateX(-50%);background:#9d3948;color:#fff;padding:10px 14px;border-radius:9px;display:none}.toast.show{display:block}@media(max-width:850px){.shell{grid-template-columns:1fr}.side{display:none}.board{width:100%}.board.bottom{width:68%}.table{min-height:850px}.seat.s1{top:280px}}@media(max-width:580px){.title{font-size:24px}.mark{display:none}.table{min-height:770px}.boards{inset:80px 4px 10px;grid-template-rows:180px 1fr 185px}.board{padding:4px;border-width:2px}.board.bottom{width:77%}.row{grid-template-columns:11px repeat(11,minmax(8px,1fr));gap:1px}.row i,.cell{height:22px}.cell{font-size:8px}.roll{width:280px;padding:11px}.die{width:43px;height:43px;padding:6px}.players{grid-template-columns:1fr}.modal h1{margin-bottom:15px}.seat{display:none}}
@@ -158,21 +160,20 @@
         const pick=options.find(x=>x.sum===value);
         const colorWhite = state.turn===state.you && (state.sharedUsed[state.you] || !pick) && !state.colorUsed && state.dice.white.find(white => white + state.dice[color] === value);
         if (colorWhite) {
-          state = (await api('/api/action',{action:'color',white:colorWhite,color})).state;
-          render();
+          applyActionState((await api('/api/action',{action:'color',white:colorWhite,color})).state);
           return;
         }
         if(!pick) return say('That number does not match the white dice.');
-        state=(await api('/api/action',{action:'shared',option:pick.key,color})).state;
+        applyActionState((await api('/api/action',{action:'shared',option:pick.key,color})).state);
       } else {
         if(state.turn!==state.you) return say('It is not your roll.');
         const white=state.dice.white.find(n=>n+state.dice[color]===value); if(!white) return say('That number does not match this colored die.');
-        state=(await api('/api/action',{action:'color',white,color})).state;
+        applyActionState((await api('/api/action',{action:'color',white,color})).state);
       }
-      render();
     } catch(e) { say(e.message); load(); }
   }
-  async function act(body){try{state=(await api('/api/action',body)).state;render()}catch(e){say(e.message);load()}}
+  function applyActionState(nextState){state=nextState;stateEpoch++;render()}
+  async function act(body){try{applyActionState((await api('/api/action',body)).state)}catch(e){say(e.message);load()}}
   function renderPlayerChoices(){
     $('#players').innerHTML=lobbyNames.map((name,seat)=>`<div class="player-choice"><button class="choose-player" data-join-seat="${seat}">${esc(name)}</button><button class="edit-player" data-edit-seat="${seat}" aria-label="Edit ${esc(name)}'s name" title="Edit name">✎</button></div>`).join('');
     document.querySelectorAll('[data-join-seat]').forEach(button=>button.onclick=()=>join(Number(button.dataset.joinSeat)));
@@ -194,12 +195,27 @@
       if(response.ok&&Array.isArray(lobby.names)&&lobby.names.length===3){lobbyNames=lobby.names;renderPlayerChoices();}
     }catch{}
   }
-  async function load(){try{state=(await api(`/api/state?token=${encodeURIComponent(token)}`)).state;$('#modal').classList.add('hide');render()}catch{token='';localStorage.removeItem('juddQwixxToken');$('#modal').classList.remove('hide');loadLobby()}}
-  async function join(seat){try{const x=await api('/api/join',{seat,name:lobbyNames[seat]});token=x.token;localStorage.setItem('juddQwixxToken',token);state=x.state;$('#modal').classList.add('hide');render()}catch(e){say(e.message)}}
+  async function load(){
+    if(pollInFlight)return;
+    const tokenAtRequest=token, epochAtRequest=stateEpoch;
+    pollInFlight=true;
+    try{
+      const nextState=(await api(`/api/state?token=${encodeURIComponent(tokenAtRequest)}`)).state;
+      // A slow request must never repaint the table with an earlier state after
+      // a player action has already received the bot's completed response.
+      if(tokenAtRequest!==token||epochAtRequest!==stateEpoch)return;
+      state=nextState;
+      $('#modal').classList.add('hide');
+      render();
+    }catch{
+      if(tokenAtRequest===token&&epochAtRequest===stateEpoch){token='';localStorage.removeItem('juddQwixxToken');$('#modal').classList.remove('hide');loadLobby()}
+    }finally{pollInFlight=false}
+  }
+  async function join(seat){try{const x=await api('/api/join',{seat,name:lobbyNames[seat]});token=x.token;localStorage.setItem('juddQwixxToken',token);applyActionState(x.state);$('#modal').classList.add('hide')}catch(e){say(e.message)}}
   renderPlayerChoices();
   $('#start').onclick=()=>act({action:state?.phase==='waiting'?'start':'newGame'});
   document.querySelectorAll('[data-score-tab]').forEach(button=>button.onclick=()=>{scoreTab=button.dataset.scoreTab;render()});
   $('#settingsButton').onclick=()=>$('#settings').classList.toggle('hide'); document.querySelectorAll('[name="count"]').forEach(x=>x.onchange=async()=>{await act({action:'settings',mode:x.value});$('#settings').classList.add('hide')}); $('#firstTurnReroll').onchange=async()=>{await act({action:'settings',firstTurnReroll:$('#firstTurnReroll').checked});$('#settings').classList.add('hide')}; $('#resetScores').onclick=async()=>{if(!confirm('Reset every High Score and Low Score entry? This cannot be undone.'))return;await act({action:'resetScores'});$('#settings').classList.add('hide')};
   const gameNight=new URLSearchParams(location.hash.slice(1)).get('gameNight')||'https://judd-game-night.onrender.com/'; $('#return').onclick=()=>location.assign(gameNight);
-  load(); setInterval(()=>token&&load(),1500);
+  load(); setInterval(()=>token&&load(),750);
 })();
