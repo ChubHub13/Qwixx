@@ -11,6 +11,45 @@ const seats = new Map();
 let botTimer;
 let gameNumber = 1;
 const wins = [0, 0, 0];
+// Set SCORE_HISTORY_FILE to a Render Persistent Disk path (for example
+// /var/data/qwixx-score-history.json) to retain the all-time board across deploys.
+const SCORE_HISTORY_FILE = process.env.SCORE_HISTORY_FILE || path.join(__dirname, 'score-history.json');
+
+function loadScoreHistory() {
+  try {
+    const entries = JSON.parse(fs.readFileSync(SCORE_HISTORY_FILE, 'utf8'));
+    return Array.isArray(entries) ? entries.filter(entry =>
+      NAMES.includes(entry?.name) && Number.isFinite(entry?.score)
+    ).map(entry => ({ ...entry, bot: Boolean(entry.bot) })) : [];
+  } catch {
+    return [];
+  }
+}
+let scoreHistory = loadScoreHistory();
+function saveScoreHistory() {
+  try {
+    fs.writeFileSync(SCORE_HISTORY_FILE, `${JSON.stringify(scoreHistory, null, 2)}\n`);
+  } catch (error) {
+    // A game must still be playable if its host has temporary read-only storage.
+    console.error('Could not save Qwixx score history:', error.message);
+  }
+}
+function recordScores(scores) {
+  const playedAt = new Date().toISOString();
+  scoreHistory.push(...scores.map((score, seat) => ({
+    name: NAMES[seat], score, bot: !isLive(seat), playedAt
+  })));
+  // Keep the file small while retaining far more than the visible top/bottom five.
+  scoreHistory = scoreHistory.slice(-1000);
+  saveScoreHistory();
+}
+function allTimeScores(direction) {
+  const multiplier = direction === 'high' ? -1 : 1;
+  return [...scoreHistory]
+    .sort((a, b) => multiplier * (a.score - b.score) || String(a.playedAt).localeCompare(String(b.playedAt)))
+    .slice(0, 5)
+    .map(({ name, score, bot }) => ({ name, score, bot }));
+}
 
 const rowValues = color => ASCENDING.has(color)
   ? [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
@@ -58,7 +97,8 @@ function snapshot(you) {
     phase: game.phase, turn: game.turn, rollingSeat: game.rollingSeat, stage: game.stage, round: game.round, rollId: game.rollId, dice: game.dice, diceLayout: game.diceLayout,
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, lockNotice: game.lockNotice, rescueEligible: rescueEligible(you), gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
-    seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] }))
+    seats: NAMES.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] })),
+    allTime: { high: allTimeScores('high'), low: allTimeScores('low') }
   };
 }
 function send(res, data, status = 200) {
@@ -252,6 +292,7 @@ function checkForEnd() {
     game.phase = 'gameover';
     const scores = game.sheets.map(score);
     wins[scores.indexOf(Math.max(...scores))]++;
+    recordScores(scores);
     game.prompt = 'Game complete — the highest score wins.';
     clearTimeout(botTimer);
     return true;
