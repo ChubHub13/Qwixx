@@ -13,7 +13,8 @@ let gameNumber = 1;
 const wins = [0, 0, 0];
 // Set SCORE_HISTORY_FILE to a Render Persistent Disk path (for example
 // /var/data/qwixx-score-history.json) to retain the all-time board across deploys.
-const SCORE_HISTORY_FILE = process.env.SCORE_HISTORY_FILE || path.join(__dirname, 'score-history.json');
+const SCORE_HISTORY_FILE = process.env.SCORE_HISTORY_FILE
+  || (fs.existsSync('/var/data') ? '/var/data/qwixx-score-history.json' : path.join(__dirname, 'score-history.json'));
 
 function loadScoreHistory() {
   try {
@@ -43,9 +44,9 @@ function recordScores(scores) {
   scoreHistory = scoreHistory.slice(-1000);
   saveScoreHistory();
 }
-function allTimeScores(direction) {
+function allTimeScores(direction, excludeBots = false) {
   const multiplier = direction === 'high' ? -1 : 1;
-  return [...scoreHistory]
+  return scoreHistory.filter(entry => !excludeBots || !entry.bot)
     .sort((a, b) => multiplier * (a.score - b.score) || String(a.playedAt).localeCompare(String(b.playedAt)))
     .slice(0, 5)
     .map(({ name, score, bot }) => ({ name, score, bot }));
@@ -98,7 +99,10 @@ function snapshot(you) {
     settings: game.settings, locked: game.locked, sheets: game.sheets, highlights: game.highlights, sharedUsed: game.sharedUsed, sharedDone: game.sharedDone, colorUsed: game.colorUsed, rerolled: game.rerolled, cyclingDie: game.cyclingDie, lockNotice: game.lockNotice, rescueEligible: rescueEligible(you), gameNumber, prompt: game.prompt, you,
     closeRequirement: requiredToClose(),
     seats: playerNames.map((name, seat) => ({ name, seat, live: isLive(seat), bot: !isLive(seat), score: score(game.sheets[seat]), wins: wins[seat] })),
-    allTime: { high: allTimeScores('high'), low: allTimeScores('low') }
+    allTime: {
+      high: allTimeScores('high'), low: allTimeScores('low'),
+      highHumans: allTimeScores('high', true), lowHumans: allTimeScores('low', true)
+    }
   };
 }
 function send(res, data, status = 200) {
@@ -435,7 +439,6 @@ const server = http.createServer((req, res) => {
       : playerNames.indexOf(String(body.name || ''));
     if (seat < 0) return fail(res, 'Choose one of the listed players.');
     const prior = seats.get(seat);
-    if (prior && prior.token !== body.token) return fail(res, `${playerNames[seat]} is already playing on another device.`);
     const requestedName = String(body.name || playerNames[seat]).trim().replace(/\s+/g, ' ').slice(0, 24);
     if (!requestedName) return fail(res, 'Enter a player name.');
     if (playerNames.some((name, index) => index !== seat && name.toLocaleLowerCase() === requestedName.toLocaleLowerCase())) {
